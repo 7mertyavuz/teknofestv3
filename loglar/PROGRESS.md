@@ -52,3 +52,9 @@ Format: her iterasyon → [saat] SEÇİM (Pn) · NE · SONUÇ · KARAR (commit/r
 - **P5/P4 guard**: predict.py RUNTIME_BUDGET_S=540 → aşımda eldeki sonuçla geçerli results.json (10dk timeout garantisi). pytest 22/22, video_3 65s (guard tetiklenmedi).
 - **FTR**: FPS + guard işlendi, 10 sayfa; teslim/kod.zip+FTR yenilendi. commit 3ae01d5.
 - **KONVERJANS**: P1-P7 ele alındı. Kalan: Roboflow-key (P2/P3 veri), gerçek-T4-FPS, stride(riskli), teknocan, Başvuru-ID → kullanıcı kararı/düşük-frekans. UYANINCA_OKU.md net liste içeriyor.
+
+## Iter 8 — Sürücü-eylem (YENİ model) veri-engeli + 5070 alternatif kullanım
+- **HEDEF**: kullanıcı "5070'te yeni model eğit" → sürücü-eylem cls (su_icme/arkaya_bakma/telefon/normal), State Farm açık seti (gymprathap/HF).
+- **VERİ ENGELİ (4 yöntem başarısız)**: snapshot_download (6480 dosya throttle/stuck), hf_hub_download (tek zip 0-byte stuck, 8× .incomplete), git-clone (zip HEAD'de yok), git-lfs pull (PULL_EXIT=0 ama LFS obj 0MB, zip materyalize olmadı). → **box'tan token'sız çekilemiyor; HF token veya Roboflow key gerekli (KULLANICI aksiyonu).** driver_action_cls.py hazır, key gelince anında koşar.
+- **5070 ALTERNATİF (boş bırakmamak)**: QoDe-5G verisi zaten box'ta → **yolo26m-cls** araç-tip (cache=True, GPU-bound/hızlı) eğitimi başlatıldı. top1>0.933 ise swap, değilse mevcut s-model (0.933) kalır (Mac kopyası dokunulmaz, güvenli).
+- **KARAR**: commit a295174. Sürücü-eylem YENİ model = veri-engeli (sabah: token/key ver).
