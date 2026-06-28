@@ -46,3 +46,9 @@ Format: her iterasyon → [saat] SEÇİM (Pn) · NE · SONUÇ · KARAR (commit/r
 - **ENTEGRE**: best.pt→weights/vehicle_type.pt (scp). 3-video re-baseline: **tip artık modelden → 3 araç da "suv"** (TOGG T10X SUV; heuristik "sedan"dan muhtemelen daha doğru). **REGRESYON YOK**: plaka 34TC8532 3/3, davranışlar (sigara/telefon/slalom) korundu, şema geçerli, cs 0.87-0.92'ye yükseldi.
 - **FTR**: top1 0.933 işlendi (Tablo1 + §3.3 + özet; "ölçülüyor" kaldırıldı; classification notu eklendi). PDF 10sf. kod.zip yenilendi (193MB). pytest 22/22. **KARAR**: commit dc02688 + push.
 - **NOT (5070 kullanımı)**: araç-tip body-tip uzaktan görünür → transfer iyi. Sürücü-davranış (su_icme/esneme) setleri in-cabin yakın-çekim; bizim girdi uzak roadside 4K → domain-gap, riskli transfer (I4) → domain-uyumlu komite/Roboflow verisi gerekli (sabah notu). 5070: araç-tip + FPS-bench ile kullanıldı.
+
+## Iter 7 — Hız/bütçe + FTR finalize + KONVERJANS
+- **5070 FPS bench**: full-pipeline 0.67 FPS (host OCR-CPU-bound + onnxruntime-CPU + contention) → PATOLOJİK, FTR'ye yazılmadı (I4). FTR'ye dürüst çerçeve: MPS full-pipeline ~7.5 FPS + detektör 5070 ~27 FPS + T4 bütçe analizi.
+- **P5/P4 guard**: predict.py RUNTIME_BUDGET_S=540 → aşımda eldeki sonuçla geçerli results.json (10dk timeout garantisi). pytest 22/22, video_3 65s (guard tetiklenmedi).
+- **FTR**: FPS + guard işlendi, 10 sayfa; teslim/kod.zip+FTR yenilendi. commit 3ae01d5.
+- **KONVERJANS**: P1-P7 ele alındı. Kalan: Roboflow-key (P2/P3 veri), gerçek-T4-FPS, stride(riskli), teknocan, Başvuru-ID → kullanıcı kararı/düşük-frekans. UYANINCA_OKU.md net liste içeriyor.

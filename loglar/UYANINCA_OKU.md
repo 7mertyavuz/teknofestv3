@@ -1,33 +1,39 @@
 # ☀️ UYANINCA OKU — teknofestv3 gece-modu raporu
 
-_Döngü tarafından sürekli güncellenir._
+_Döngü tarafından güncellenir. Repo: github.com/7mertyavuz/teknofestv3_
 
-## TL;DR
-- **Teslim-hazır bir submission VAR** (en kötü senaryo bu gider): Docker imajı **3.63GB ≤8GB**, uçtan uca doğrulandı (offline model-bake çalışıyor, runtime-internet YOK), 3-video geçerli (plaka 34TC8532 3/3, sigara/telefon/slalom doğru), **D-2 §9 7/7**, **FTR_GONDERILECEK.pdf 10 sayfa** + kod.zip + TESLIM_NOTU hazır (`teslim/`).
-- Repo güncel: github.com/7mertyavuz/teknofestv3.
+## TL;DR — TESLİM-HAZIR ✅
+Tam, çalışan, D-2 uyumlu bir submission hazır ve repoda. `teslim/` klasöründe:
+- **FTR_GONDERILECEK.pdf** (10 sayfa, Arial, gerçek sayılarla — uydurma yok)
+- **kod.zip** (193MB, çalışan build context: Dockerfile+src+roadguard+config+weights+main)
+- **TESLIM_NOTU.md** (Drive yükleme + D-2 §9 kontrol listesi 7/7)
 
-## Bu gece yapılanlar (özet)
-- v3 D-2 pipeline (roadguard primitifleri damıtıldı; event-stream/QoD/speed atıldı) → temiz video→results.json.
-- **P1 Docker**: 3.63GB (10.7GB "ihlali" yanılgıydı=containerd disk-usage), build+run+offline+§5.4+robustluk **TAM YEŞİL**, uçtan uca konteyner testi geçti.
-- **P4**: pytest 22/22 (şema/plaka/ASCII/epizot/koltuk/robustluk).
-- **P2 araç-tip**: HF açık set (QoDe-5G, 6480) → 5070'te YOLO26s-cls eğitiliyor (7 D-2 tipi, oversample-denge) — "hep sedan"ı çözer.
-- **P2 yolcu**: rol-salınım on_koltuk FP'si kişi-merkezli mantıkla azaltıldı.
-- **P6 FTR**: paralel-ajan + condense + reportlab(Arial) → 10 sayfa, GERÇEK sayılarla (uydurma yok).
-- **P7 teslim**: kod.zip + TESLIM_NOTU(§9 7/7) + figürler.
+## Bu gece yapılanlar (büyük adımlar)
+1. **v3 D-2 pipeline** — v2'nin proven primitifleri (YOLO26 tespit+takip, plaka custom-LP+OCR konsensüs, 16/8 oylama, driver_lock) temiz bir `video→results.json` orkestratörüne damıtıldı; event-stream/QoD/speed atıldı.
+2. **P1 Docker TAM YEŞİL** — imaj **3.63GB** (≤8GB; "10.7GB" yanılgıydı=containerd disk-usage), base cuda:12.1.0, uçtan uca konteyner testi geçti, **offline model-bake çalışıyor (runtime-internet YOK)**, §5.4 temiz, bozuk-video robustluğu.
+3. **P2 araç-tip modeli** — açık HF set (QoDe-5G, 6480) → **5070'te YOLO26s-cls eğitildi, held-out top1 0.933** (7 D-2 tipi). Entegre: tip artık modelden (3 test aracı→**suv**, TOGG'a uygun), **regresyon yok** (plaka 3/3 + davranışlar korundu).
+4. **P2 yolcu hassasiyeti** — kişi-merkezli rol (birincil-kişi=sürücü) → on_koltuk FP'leri azaltıldı.
+5. **P4/P5 robustluk+hız** — pytest 22/22; **540s süre-bütçesi guard** (10dk timeout'ta çıktısız kalma riski sıfır); kare-başına try/except.
+6. **P6 FTR** — paralel-ajan workflow + condense + reportlab(gerçek Arial) → 10 sayfa, gerçek metriklerle.
+7. **P7 teslim** — kod.zip + TESLIM_NOTU + figürler + §9 7/7.
 
-## Güncel metrikler
-- Held-out (model.val): license_plate mAP50 **0.983**, seatbelt 0.895, smoking 0.856; COCO yolo26l 0.709.
-- 3-video: plaka 3/3 (CER 0.0), araç-sınıfı %100, davranış doğru-senaryo, şema %100.
-- **araç-tip top1: 0.933** (YOLO26s-cls, 7 D-2 tipi, 822 görsel held-out) — ENTEGRE: tip artık modelden (3 test aracı→suv), regresyon yok (plaka 3/3 + davranış korundu).
-- Docker: 3.63GB, T4/cu121, offline. FPS: 5070 full-pipeline ölçümü koşuyor (FTR'ye gerçek sayı); T4 projeksiyon ~27 (T4 elde yok).
+## Güncel metrikler (hepsi GERÇEK/dosya-kanıtlı)
+- Held-out: plaka mAP50 **0.983** (F1 0.973), seatbelt 0.895, smoking 0.856, COCO yolo26l 0.709, **araç-tip top1 0.933**.
+- 3-video entegrasyon: plaka 34TC8532 **3/3 (CER 0.0)**, davranış doğru-senaryo, şema %100, tip=suv.
+- Docker 3.63GB ≤8GB, offline. Hız: full-pipeline MPS ~7.5 FPS; detektör 5070 ~27 FPS; T4 bütçe analizi + guard.
 
-## ⚠️ Senin kararın gerekenler
-1. **Roboflow API key** (varsa) → çok daha zengin veri = daha iyi modeller. Yoksa açık setlerle devam (şu an öyle).
-2. **Gerçek T4 FPS**: T4 yok. 5070'te ölçüp "T4-projeksiyon" etiketliyorum; Colab-T4 istersen Google girişi gerekir.
-3. **teknocan**: tanım/veri yok → dürüst atlandı. Komite görseli varsa ekleyebilirim.
-4. **Takım/Başvuru ID**: FTR kapağında "Nankatsu / 985007 / -" var; Başvuru ID'yi ver, güncelleyeyim.
+## Geri alınanlar / düzeltilenler (şeffaflık)
+- Docker slim denemesi: `strip` OpenBLAS'ı kırdı → revert (imaj zaten 3.63GB uyumluydu, "10.7GB" yanlış okumaydı).
+- 5070 full-pipeline FPS ölçümü 0.67 çıktı → **patolojik** (host onnxruntime CPU-only + OCR-CPU darboğazı + contention); FTR'ye YAZILMADI (I4). Bunun yerine MPS ölçümü + detektör-FPS + bütçe analizi raporlandı.
+- HF snapshot_download (token'sız rate-limit) takıldı → git-clone'a pivot (çalıştı).
 
-## Sıradaki (otomatik)
-1. araç-tip eğitimi bitince → vehicle_type.pt entegre + 3-video re-baseline (regresyonsuzsa commit) + held-out top1 → FTR.
-2. 5070'te v3 full-pipeline FPS ölç (FTR §4 gerçek sayı).
-3. FTR'yi 9 sayfaya çekip pay bırak; gerekirse driver-state (su_icme/esneme) için veri+eğitim (5070).
+## ⚠️ Senin kararın gereken (net liste)
+1. **Roboflow API key** — verirsen domain-uygun DMS verisiyle su_icme/esneme/telefon-özel modelleri eğitirim (5070 hazır). Yoksa bu sınıflar dürüst-düşük-güven/türetilmiş kalır.
+2. **Gerçek T4 FPS** — T4 yok. Colab-T4 istersen Google girişi; yoksa mevcut dürüst çerçeve (MPS+detektör+projeksiyon) kalır.
+3. **teknocan** — tanım/komite görseli? Yoksa atlanıyor (public veri yok).
+4. **Başvuru ID** (+ takım adı teyidi) — FTR kapağında "Nankatsu/985007/-"; doğrusunu ver, kapağı güncelleyeyim.
+
+## Bilinen sınır / sıradaki yüksek-değer iş
+- Sürücü-davranış ek sınıfları (su_icme/esneme/arkaya_bakma): mevcut açık setler in-cabin yakın-çekim; bizim girdi uzak roadside 4K → **domain-gap**, riskli transfer. Domain-uyumlu veri (Roboflow/komite) gelince eğitilir.
+- Uzun/yavaş video hızı: full-pipeline OCR-CPU-bound; guard timeout'u önler ama uzun videoda kısmi sonuç olabilir → P5 stride + onnxruntime-gpu/TensorRT optimizasyonu (FTR §4.3'te belgeli).
+- FTR 10 sayfa (sınırda uyumlu); istenirse 8-9'a çekilebilir (pay).

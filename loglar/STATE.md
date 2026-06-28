@@ -37,3 +37,15 @@ GT (data/samples): plaka 34TC8532 (3/3 ✓), senaryolar sigara/telefon/slalom (3
 1. P1: Docker build doğrula + imaj boyutu/süre ölç (compliance %100).
 2. P2/P3: açık setlerden veri → birleşik YOLO26 (araç-tip + sürücü-eylem incl. esneme/su_icme), augment+balance, 5070'te eğit, held-out ölç.
 3. P6: FTR taslağı gerçek metriklerle (custom metrics.json + baseline + ölçülen FPS).
+
+---
+## GÜNCEL (gece sonu — bu bölüm üsttekileri geçersiz kılar)
+**Uyumluluk P1: TAM YEŞİL** — imaj 3.63GB ≤8GB, build+run+offline (model-bake) uçtan uca doğrulandı, §5.4 temiz, **540s süre-bütçesi guard** (10dk timeout koruması), pytest 22/22.
+**Baseline (3-video, model entegre):** hepsi valid; **tip=suv (YOLO26-cls top1 0.933)**, renk=siyah, **plaka 34TC8532 3/3**, davranışlar doğru-senaryo (v1 sigara / v2 telefon / v3 slalom).
+**Yetenek güncel:**
+- ✅ GERÇEK MODEL: plaka(0.983) · sigara(0.856) · kemer(0.895) · **araç-tip 7-sınıf(0.933)** · araç tespit/takip
+- ✅ TÜRETİLMİŞ: slalom · renk(HSV) · yolcu(kişi-merkezli)
+- 🟡 KISMİ: telefonla_konusma(COCO+pose) · etrafa_bakinma · bilgisayar(COCO laptop)
+- ❌ EKSİK (domain-uyumlu veri gerek): esneme · su_icme · arkaya_bakma · teknocan
+**Teslim hazır:** teslim/{FTR_GONDERILECEK.pdf(10sf), kod.zip(193MB), TESLIM_NOTU.md} · D-2 §9 7/7.
+**Konverjans:** P1-P7 ele alındı; kalan kazanç kullanıcı-girdisi (Roboflow key) ya da regresyon-riskli (stride) → düşük-frekans moduna geçildi.
