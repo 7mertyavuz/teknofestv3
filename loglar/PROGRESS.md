@@ -28,3 +28,8 @@ Format: her iterasyon → [saat] SEÇİM (Pn) · NE · SONUÇ · KARAR (commit/r
 - **KARAR (I5)**: slim değişikliği gereksiz + kırıyordu → **Dockerfile orijinale REVERT**. Mevcut 3.63GB imaj geçerli, kullanılıyor.
 - **EK (P2 hassasiyet)**: baseline'daki `on_koltuk` yanlış-pozitifleri için yolcu epizotuna **min-kare kapısı (≥8)** eklendi (geçici tek-kare yolcu elenir). pytest 22/22 yeşil.
 - **METRİK**: Docker uyumluluk ✅ (3.63GB, build+warmup OK). Sıradaki: imajı bir videoyla çalıştırıp results.json doğrula (P1 kapanış).
+
+## Iter 4 — P1 KAPANDI (Docker uçtan uca) + araç-tip veri pivotu
+- **P1 DOĞRULAMA**: imaj bir klipte (CPU, WSL) çalıştırıldı → **geçerli results.json üretti** (tip=sedan, renk, slalom@2.5s; downscale klip → plaka 'tespit edilemedi' = doğru). **fast-plate-ocr modeli baked-cache'den yüklendi ("Skipping download... already exists") → OFFLINE BAKING + runtime-internetsiz ÇALIŞIYOR.** P1 (build+run+offline+şema+≤8GB) **TAM YEŞİL**.
+- **P2 veri (KIRMIZI/MAVİ)**: `snapshot_download` 6480 dosya token'sız rate-limit'te takıldı (cache boş, 25dk) → python kill. **PIVOT**: HF dataset'i **git clone** ile çekiliyor (tek bağlantı, per-file throttle yok). vehicle_type_cls.py'ye `--local_src` eklendi (yerel klonu kullan).
+- **KARAR**: commit+push; git clone arka planda; bitince --local_src ile eğitim re-run.

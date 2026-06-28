@@ -33,11 +33,15 @@ TYPE_MAP = {
 }
 
 
-def build_cls_dataset(out: Path, val_ratio=0.2, seed=0, oversample=True) -> dict:
-    from huggingface_hub import snapshot_download
+def build_cls_dataset(out: Path, val_ratio=0.2, seed=0, oversample=True, local_src=None) -> dict:
+    if local_src:
+        src = Path(local_src)
+        print(f"[1/3] yerel kaynak kullanılıyor: {src}")
+    else:
+        from huggingface_hub import snapshot_download
 
-    print(f"[1/3] HF indiriliyor: {HF_REPO}")
-    src = Path(snapshot_download(HF_REPO, repo_type="dataset"))
+        print(f"[1/3] HF indiriliyor: {HF_REPO}")
+        src = Path(snapshot_download(HF_REPO, repo_type="dataset"))
     csv_path = src / "type-labels.csv"
     train_dir = src / "Train"
 
@@ -99,9 +103,10 @@ def main():
     ap.add_argument("--device", default="0")
     ap.add_argument("--model", default="yolo26s-cls.pt")
     ap.add_argument("--out", default=str(ROOT / "data" / "vehicle_cls"))
+    ap.add_argument("--local_src", default=None, help="HF yerine yerel klon dizini (type-labels.csv + Train/)")
     args = ap.parse_args()
 
-    dist = build_cls_dataset(Path(args.out))
+    dist = build_cls_dataset(Path(args.out), local_src=args.local_src)
 
     from ultralytics import YOLO
 
