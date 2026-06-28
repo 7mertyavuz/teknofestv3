@@ -28,7 +28,7 @@ Tam, çalışan, D-2 uyumlu bir submission hazır ve repoda. `teslim/` klasörü
 - HF snapshot_download (token'sız rate-limit) takıldı → git-clone'a pivot (çalıştı).
 
 ## ⚠️ Senin kararın gereken (net liste)
-1. **Roboflow API key** — verirsen domain-uygun DMS verisiyle su_icme/esneme/telefon-özel modelleri eğitirim (5070 hazır). Yoksa bu sınıflar dürüst-düşük-güven/türetilmiş kalır.
+1. **YENİ MODEL İÇİN VERİ ERİŞİMİ (#1 blokör)** — sürücü-eylem modelini (su_icme/arkaya_bakma/telefon) eğitmek istedin; veriyi box'tan **4 yöntemle** çekemedim (HF snapshot/hf_hub/git-clone/git-lfs → token'sız throttle/LFS). **HF token** (huggingface.co/settings/tokens) VEYA **Roboflow API key** ver → driver_action_cls.py hazır, anında eğitir+entegre ederim (FP-kontrollü). _5070 bu sırada boş kalmasın diye yolo26m araç-tip eğitiliyor (alternatif)._
 2. **Gerçek T4 FPS** — T4 yok. Colab-T4 istersen Google girişi; yoksa mevcut dürüst çerçeve (MPS+detektör+projeksiyon) kalır.
 3. **teknocan** — tanım/komite görseli? Yoksa atlanıyor (public veri yok).
 4. **Başvuru ID** (+ takım adı teyidi) — FTR kapağında "Nankatsu/985007/-"; doğrusunu ver, kapağı güncelleyeyim.
