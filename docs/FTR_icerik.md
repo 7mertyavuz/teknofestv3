@@ -1,21 +1,21 @@
 ## 1. Proje Özeti
 
-**RoadGuard**, TEKNOFEST 2026 "5G & Yapay Zekâ ile Akıllı Yol Güvenliği" yarışması FTR aşaması için, yol kenarı kamera videosunu **tek geçişte** D-2 uyumlu `results.json`'a dönüştüren çok-aşamalı (kaskad) çıkarım hattıdır. Problem: değişken FPS/çözünürlük/ışık koşullarında araç kimliğini (tip, plaka, renk) ve sürücü ihlallerini (sigara, telefon, kemer, slalom) güvenilir tespit etmek.
+**RoadGuard**, TEKNOFEST 2026 "5G & Yapay Zekâ ile Akıllı Yol Güvenliği" yarışmasının FTR aşaması için geliştirdiğimiz çok aşamalı (kaskad) çıkarım hattıdır. Yol kenarı kameradan gelen videoyu tek geçişte D-2 uyumlu `results.json` dosyasına dönüştürür. Hedef: FPS, çözünürlük ve ışığın değiştiği saha koşullarında hem araç kimliğini (tip, plaka, renk) hem sürücü ihlallerini (sigara, telefon, kemer, slalom) güvenilir tespit etmek.
 
-Mimari, fps-bağımsız `cv2` akışı üzerine kurulu üç aşamalıdır (Şekil 1): **Stage-1** YOLO26l + ByteTrack tespit + konum-bazlı **DriverLock**; **Stage-2a** YOLO26-pose geometrisi + `custom_smoking` OR-füzyonu + 16/8 zaman-oylamasıyla sürücü durumu; **Stage-2b** `custom_license_plate` (YOLO26s) → fast-plate-ocr (ONNX) / EasyOCR → TR-normalizasyon + ağırlıklı oy konsensüsü + dürüstlük zırhları. Araç tipi YOLO26-cls (7 sınıf), renk HSV baskın-renk; ID-merkezli birikim sonucu şema doğrulayıcıdan geçirir.
+Mimariyi fps'ten bağımsız bir `cv2` akışı üzerine kurup üç aşamaya böldük (Şekil 1). **Stage-1** YOLO26l ve ByteTrack ile tespit/takip yapar, ardından sürücüyü konuma göre kilitleyen **DriverLock** girer. **Stage-2a** sürücü durumunu çıkarır: YOLO26-pose geometrisini `custom_smoking` ile OR-füzyonuna sokup 16/8 zaman-oylamasıyla kararı kararlı kılar. **Stage-2b** plakayı `custom_license_plate` (YOLO26s) ile bulur, fast-plate-ocr (ONNX) ya da yedek EasyOCR ile okur, ardından TR-normalizasyon, ağırlıklı oy konsensüsü ve dürüstlük zırhlarından geçirir. Araç tipini YOLO26-cls (7 sınıf), rengi HSV baskın-renk ile belirler, çıktıları ID-merkezli biriktirip şema doğrulayıcıdan geçiririz.
 
 **Ana sonuçlar (held-out, dosya-kanıtlı):**
 
-- **Plaka tespiti** `custom_license_plate.pt` (YOLO26s): mAP50 **0.983** · mAP50-95 0.706 · P 0.982 · R 0.963 · F1 **0.973** — hattın en güçlü halkası.
-- **3-video uçtan-uca** (gerçek 4K@50fps, GT plaka `34TC8532`): plaka **3/3 exact-match (CER 0.0)**, araç-sınıfı **%100**, davranış doğru senaryoda tespit, şema **%100 geçerli**.
-- **Dağıtım**: base `nvidia/cuda:12.1.0-base-ubuntu22.04`, hedef Tesla T4 (sm_75), imaj **3.63 GB** (<8 GB), runtime internetsiz (modeller build'de gömülü, offline doğrulandı).
-- **Performans**: T4 gerçek ölçümü beklenmekte (elde T4 yok); CPU klip 75 kare/82 s, T4 projeksiyonu ~27 FPS (ham PyTorch × FP16) — dürüstçe "projeksiyon" etiketli.
+- **Plaka tespiti** (`custom_license_plate.pt`, YOLO26s): mAP50 **0.983** · mAP50-95 0.706 · P 0.982 · R 0.963 · F1 **0.973**. Hattımızın en güçlü halkası.
+- **Üç videoda uçtan uca test** (gerçek 4K@50fps, GT plaka `34TC8532`): plakayı **3/3 exact-match (CER 0.0)** okuduk, araç sınıfını **%100** bildik, davranışları doğru senaryolarda yakaladık, şema **%100 geçerli** çıktı.
+- **Dağıtım**: temel imaj `nvidia/cuda:12.1.0-base-ubuntu22.04`, hedef Tesla T4 (sm_75). İmaj **3.63 GB** (<8 GB), çalışma anında internet gerektirmiyor. Modelleri build sırasında imaja gömüp çevrimdışı çalıştığını doğruladık.
+- **Performans**: Fiziksel T4 olmadığı için kart üzerindeki gerçek ölçümü henüz alamadık. CPU'da bir klipte 75 kareyi 82 s'de işledik. T4 için ~27 FPS bekliyoruz (ham PyTorch × FP16). Abartmamak için bunu raporda "projeksiyon" diye etiketledik.
 
 ---
 
 ## 2. Veri Seti Oluşturulması
 
-Her özel model lisansı net **açık kaynak veri setleriyle** eğitildi; setler tek birleşik taksonomiye (`train/unified_taxonomy.py`) eşlenip D-2 ile hizalandı. Toplam **19.264 özel-eğitim görseli** (9.123 + ~557 + 3.104 + 6.480); Stage-1 tabanı COCO val2017 (5.000) üzerinde doğrulandı.
+Özel modellerin her birini lisansı açık **açık kaynak veri setleriyle** eğittik, hepsini tek bir birleşik taksonomiye (`train/unified_taxonomy.py`) eşleyip D-2 ile hizaladık. Toplam özel-eğitim görseli **19.264** (9.123 + ~557 + 3.104 + 6.480). Stage-1 tabanını COCO val2017 (5.000) üzerinde doğruladık.
 
 | # | Veri Seti (Kaynak) | Kullanım / Model | Görsel | Lisans |
 |---|---|---|---|---|
@@ -25,11 +25,11 @@ Her özel model lisansı net **açık kaynak veri setleriyle** eğitildi; setler
 | 4 | QoDe-5G `raw-car-classification-iHasibi` (HF) | Araç tipi (7 D-2 sınıfı) — YOLO26-cls | 6.480 | Açık erişim (HF) |
 | 5 | COCO val2017 (Lin vd.) | Stage-1 araç/kişi taban doğrulaması — `yolo26l` (stok) | 5.000 | CC BY 4.0 |
 
-**Etiketleme ve taksonomi:** Kaynaklar hazır etiketli; emek birleştirme/temizliktedir: ALIAS-remap (`cigarette/smoking/smoke → sigara_icme`, `car/saloon → sedan`; DRIVER 6, VEHICLE 7 sınıf), kapsam-dışı filtre (Bike/CNG → `None`), negatif-gürültü eleme. Türetilmiş davranışlar (`arkaya_bakma`, `etrafa_bakinma`, `slalom`, kemer-yokluğu) detection sınıfı değil; pose/geometri + zaman-oylamasıyla türetilir.
+**Etiketleme ve taksonomi:** Kaynak setler etiketli geldiği için emeğimiz birleştirme ve temizlikteydi. ALIAS-remap uyguladık (`cigarette/smoking/smoke → sigara_icme`, `car/saloon → sedan`; DRIVER 6, VEHICLE 7 sınıf), kapsam dışı etiketleri filtreledik (`Bike/CNG → None`), negatif gürültüyü ayıkladık. Türetilmiş davranışlar (`arkaya_bakma`, `etrafa_bakinma`, `slalom`, kemer yokluğu) ayrı bir detection sınıfı değildir. Bunları pose ve geometriden zaman-oylamasıyla çıkarırız.
 
-**Sınıf dengeleme:** Azınlık araç-tip sınıfları yalnız eğitim bölümünde en büyüğe dek kopyalanır (`vehicle_type_cls.py`); val doğal dağılımda kalır — sızıntı/şişme olmaz.
+**Sınıf dengeleme:** Az örnekli araç-tip sınıflarını yalnızca eğitimde, en büyük sınıfın boyutuna kadar çoğalttık (`vehicle_type_cls.py`). Val'i doğal dağılımında bıraktık, böylece ne sızıntı ne yapay şişme oluşur.
 
-**Veri artırma (gürbüzlük):** Augmentasyon saha videolarının FPS/çözünürlük/ışık/hava çeşitliliğini (D-2 §7) taklit eder (parametreler `train/train.py`, `vehicle_type_cls.py` dosya-kanıtlı):
+**Veri artırma (gürbüzlük):** Augmentasyonu saha videolarındaki FPS, çözünürlük, ışık ve hava çeşitliliğini (D-2 §7) taklit edecek şekilde kurguladık (`train/train.py`, `vehicle_type_cls.py`):
 
 | Augmentasyon | Tespit | Araç-tip cls | Gürbüzlük hedefi |
 |---|---|---|---|
@@ -42,15 +42,15 @@ Her özel model lisansı net **açık kaynak veri setleriyle** eğitildi; setler
 | Ölçek | 0.5 | 0.5 | mesafe/çözünürlük |
 | Random Erasing | 0.2 | 0.3 | okluzyon dayanıklılığı |
 
-Tüm koşumlar `seed=0, deterministic=True` ile tekrarlanabilir.
+Tüm koşumları `seed=0, deterministic=True` ile yaptık, sonuçlar tekrarlanabilir.
 
-**Train/Val/Test (val ≠ test):** Tespitte kaynak `train` → eğitim, `valid`+`test` → held-out **val** (§4 metrikleri). Araç-tip cls'de sınıf-bazlı %80/%20 (`val_ratio=0.2, seed=0`), oversample yalnız train'e. **Bağımsız TEST**: eğitim/val ile ortak görsel içermeyen, farklı domaindeki 3 gerçek **4K@50fps** video; val/test ayrımı optimistik yanlılığı yapısal engeller (sızıntı imkânsız). Saha sonuçları §4.2'dedir.
+**Train/Val/Test (val ≠ test):** Tespit modellerinde kaynaktaki `train`'i eğitime ayırdık, `valid`+`test`'i birleştirip held-out **val** yaptık (§4 metrikleri buradan gelir). Araç-tip sınıflandırmasında sınıf bazında %80/%20 ayrım yaptık (`val_ratio=0.2, seed=0`), oversample yalnızca eğitime. **Bağımsız TEST** için eğitim ve val ile hiç ortak görsel içermeyen, farklı domainden 3 gerçek **4K@50fps** video kullandık. Bu ayrım optimistik yanlılığı yapısal olarak engeller, sızıntı mümkün değildir. Saha sonuçları §4.2'de.
 
 ---
 
 ## 3.1 Problemin Analizi
 
-Problemi laboratuvardan ayıran, girdinin kontrolsüz saha koşullarında üretilmesidir: ışık/kamera kontrolü yok, araç hareketli, karar tek kareye değil aynı ID'nin kare yığınına dayanmak zorunda. Tablo altı zorluğu, çözümü ve gerekçesini verir.
+Bu problemi laboratuvardan ayıran şey, girdinin kontrolsüz saha koşullarında üretilmesidir. Ne ışığa ne kameraya müdahale edebiliyoruz, araç hareket hâlinde ve kararı tek kareye değil aynı ID'ye ait kare yığınına dayandırmak zorundayız. Tabloda altı temel zorluğu, çözümünü ve gerekçesini topladık.
 
 | Zorluk | İzlenen Çözüm | Gerekçe |
 |---|---|---|
@@ -61,43 +61,43 @@ Problemi laboratuvardan ayıran, girdinin kontrolsüz saha koşullarında üreti
 | **Değişken FPS / çözünürlük** | fps-bağımsız örnekleme; scale/translate/degrees + mosaic; zaman damgası gerçek fps'ten | Mantık fps'e gömülürse 25fps'te bozulur; tasarım epizot zamanlamasını profilden ayırır. |
 | **Karanlık kabin** | DriverLock; pose el-kulak/ağız geometrisi + custom_smoking OR; 16/8 oylama | Loş kabinde tek-kare gürültülü; karar zaman penceresine yayılan kanıta bağlandı (custom_smoking F1 0.837, custom_seatbelt F1 0.818). |
 
-Üç imza karar ortak temaya dayanır — tek-kareye değil zamanda biriken kanıta güvenmek: **16/8 ID-merkezli zaman-oylaması** gürültüyü histerezisle bastırır, **sıkı LP kırpma** karakter-başına pikseli maksimize edip CER 0.0'a katkı verir, **alan-ağırlıklı sınıf oyu** %100 araç-sınıfı doğruluğu sağlar (çıkarım hızı için bkz. §4.3).
+Üç imza kararımız da aynı fikre dayanır: tek kareye değil, zamanda biriken kanıta güvenmek. **16/8 ID-merkezli zaman-oylaması** gürültüyü histerezisle bastırır. **Sıkı LP kırpma** karakter başına pikseli en üst düzeye çıkarıp CER 0.0'a katkı verir. **Alan-ağırlıklı sınıf oyu** %100 araç-sınıfı doğruluğunu sağlar (hız için bkz. §4.3).
 
 ---
 
 ## 3.2 Çözüm Mimarisi
 
-Çalıştırma sözleşmesi sabittir: `docker run` giriş noktasını (`main.py`) başlatır, `/app/data/input/video.mp4 → /app/data/output/results.json` dönüşümünü yapar. Ortama göre davranış değiştiren yapı yok — tek davranış (D-2 §5.4). Uçtan uca akış Şekil 1'de gösterilmiştir: ham video tek bir Stage-1 tespit/takip katmanından geçer, ardından sürücü-durumu, plaka ve araç-özellik dalları paralel çalışıp ID-merkezli birikimde birleşir.
+Çalıştırma sözleşmemiz sabittir: `docker run` giriş noktasını (`main.py`) başlatıp `/app/data/input/video.mp4` dosyasını `/app/data/output/results.json` dosyasına dönüştürür. Ortama göre davranış değiştiren yapı yoktur, sistem tek şekilde davranır (D-2 §5.4). Uçtan uca akış Şekil 1'de: ham video tek bir Stage-1 tespit/takip katmanından geçer, ardından sürücü durumu, plaka ve araç özellikleri dalları paralel çalışıp ID-merkezli birikimde buluşur.
 
-Stage-1/2a/2b ayrıntıları §3.3'te, held-out sayıları §4.1 Tablo 1'dedir. Sağlamlık: kare başına `try/except` izolasyonu (tek bozuk kare koşuyu bitirmez); DriverLock `confirm_frames=3` ile yolcuyu kilitler; **ID-merkezli birikim** kare/güven/alan/oy/plaka/davranış aralıklarını eşikli epizot ayrımıyla toplar (ardışık tespitler >1.2 s ayrıksa ayrı olay); **D-2 çıktısı** ana aracı seçip `arac_bilgisi` + zaman damgalı `tespitler`'i şema doğrulayıcıdan geçirir, çökmede `fallback_doc` boş-geçerli `results.json` üretir.
+Stage-1, 2a ve 2b ayrıntıları §3.3'te, held-out sayıları §4.1 Tablo 1'de. Sağlamlık için her kareyi `try/except` ile izole ederiz, tek bozuk kare bütün koşuyu çökertmez. DriverLock yolcuyu `confirm_frames=3` ile kilitler. **ID-merkezli birikim** kare, güven, alan, oy, plaka ve davranış aralıklarını eşikli epizot ayrımıyla birleştirir. Ardışık iki tespit arası 1.2 s'den fazlaysa ayrı olay sayar. **D-2 çıktısı** ana aracı seçer, `arac_bilgisi` alanını ve zaman damgalı `tespitler` listesini şema doğrulayıcıdan geçirir. Çökmede `fallback_doc` boş ama geçerli bir `results.json` üretir.
 
-İç tipler ile D-2 çıktısı arası çeviri `src/d2_labels`'te izole edilir. Kapsam dışı katmanlar (event-stream, QoD/5G, hız tahmini, dashboard) D-2 yolundan bilinçli çıkarıldı; kaskad tek hedefe (şema-geçerli `results.json`) odaklanır.
+İç tip ile D-2 çıktısı arasındaki çeviriyi `src/d2_labels`'te izole ettik. Kapsam dışı katmanları (event-stream, QoD/5G, hız tahmini, dashboard) D-2 yolundan bilerek çıkardık, çünkü kaskadın tek hedefe (şema açısından geçerli bir `results.json`) odaklanmasını istedik.
 
 ---
 
 ## 3.3 Çözüm Detayları
 
-Ana ilke: tam kare yalnız Stage-1'e girer, sonrası ROI kırpıklarında çalışır; akış ID-merkezlidir. Bağımlılıklar sürüm-sabit ve imaja build'de gömülü (runtime internetsiz): PyTorch+torchvision 2.5.1/0.20.1 (cu121, T4 sm_75), Ultralytics 8.4.66 (YOLO26 tespit/pose/cls + ByteTrack), OpenCV-headless 4.10.0.84, fast-plate-ocr 1.1.0 (ONNX `global-plates-mobile-vit-v2`), ONNXRuntime 1.20.1, EasyOCR 1.7.2, Pydantic 2.13.4 (D-2 `schema.py`), NumPy 2.1.3.
+Temel ilke: tam kare yalnızca Stage-1'e girer, sonrası ROI kırpıkları üzerinde çalışır, akış tümüyle ID-merkezlidir. Bağımlılık sürümlerini sabitleyip build'de imaja gömdük, çalışma anında internet gerekmez. Sürümler: PyTorch+torchvision 2.5.1/0.20.1 (cu121, T4 sm_75), Ultralytics 8.4.66 (YOLO26 tespit/pose/cls + ByteTrack), OpenCV-headless 4.10.0.84, fast-plate-ocr 1.1.0 (ONNX `global-plates-mobile-vit-v2`), ONNXRuntime 1.20.1, EasyOCR 1.7.2, Pydantic 2.13.4 (D-2 `schema.py`) ve NumPy 2.1.3.
 
-**Donanım ayrımı:** Eğitim (RTX 5070, cu128) ile dağıtım (T4, sm_75, CUDA 12.1) farklı CUDA ABI'larında; `roadguard/device.py` gerçek bir kernel çalıştırıp "no kernel image" uyumsuzluğunu yakalar, doğrulanamazsa sessizce CPU/MPS'e düşer (EasyOCR/fast-plate-ocr dahil).
+**Donanım ayrımı:** Eğitimi RTX 5070 (cu128) üzerinde yaptık, dağıtım T4 (sm_75, CUDA 12.1) üzerinde çalışacak. İkisi farklı CUDA ABI'sine sahip olduğundan `roadguard/device.py` gerçek bir kernel çalıştırıp "no kernel image" türü uyumsuzlukları yakalar. Doğrulayamazsa EasyOCR ve fast-plate-ocr dâhil sessizce CPU veya MPS'e geçer.
 
-**Stage-1:** YOLO26l (stok COCO) + ByteTrack (`persist=True`), conf 0.35 / iou 0.45; profiller `server` (imgsz 960, CUDA) / `laptop` (yolo26s, imgsz 640, MPS). Fail-closed süzgeç; kişiler/tabelalar/phone-smoking ilgili aşamalara yönlendirilir. IoU>0.80 dedup hayalet-track'leri eler; alan-ağırlıklı oy `conf × area_norm`, eşitlikte deterministik; DriverLock her kare konuma göre seçilir.
+**Stage-1:** YOLO26l (stok COCO) ve ByteTrack (`persist=True`) çalışır, eşikler conf 0.35, iou 0.45. İki profil var: `server` (imgsz 960, CUDA), `laptop` (yolo26s, imgsz 640, MPS). Süzgeç fail-closed mantığıyla kişileri, tabelaları ve telefon/sigara adaylarını ilgili aşamalara yönlendirir. IoU 0.80'i geçen tespitleri dedup ile eler, hayalet track'lerden kurtuluruz. Alan-ağırlıklı oyu `conf × area_norm` ile hesaplar, eşitlikte deterministik karar veririz. DriverLock'u her karede konuma göre yeniden seçeriz.
 
-**Stage-2a (pose + ikinci model):** Stok COCO telefon/sigara davranışını üretemez; çözüm landmark kütüphanesiz iki kanal + oylama. (1) **Pose** (ölçek-bağımsız): bilek↔kulak < `0.40×yüz_genişliği` → telefon, bilek↔ağız < `0.60×yüz_genişliği` → sigara; kulak görünmüyorsa çekimserlik. (2) **custom_smoking** geometrik sigaraya OR'lanır; stok phone güçlü conf görülürse geometrik sigara latch'le bastırılır. (3) **ROI:** sıkı kırpma + Lanczos büyütme + LAB-L CLAHE/gamma (karanlık kabin açılır). (4) **16/8 oylama:** ham bayrak son 16 karenin ≥8'inde → "kararlı aktif"; `no_seatbelt` kemer yokluğundan türetilir (varsayılan kapalı, FP koruması).
+**Stage-2a (pose + ikinci model):** Stok COCO telefon/sigara davranışını tek başına üretemez, bu yüzden landmark kütüphanesi gerektirmeyen iki kanallı bir oylama tasarladık. (1) **Pose** (ölçekten bağımsız): bilek↔kulak mesafesi `0.40×yüz_genişliği` altındaysa telefon, bilek↔ağız mesafesi `0.60×yüz_genişliği` altındaysa sigara. Kulak görünmüyorsa karar vermeyiz. (2) **custom_smoking** çıktısını geometrik sigara kararıyla OR'larız. Stok phone modeli güçlü conf görürse geometrik kararı latch ile bastırırız. (3) **ROI:** sıkı kırpma, Lanczos büyütme ve LAB-L üzerinde CLAHE/gamma ile karanlık kabini aydınlatırız. (4) **16/8 oylama:** ham bayrak son 16 karenin en az 8'inde görülürse durum "kararlı aktif" sayılır. `no_seatbelt`'i kemer yokluğundan türetiriz. FP'ye karşı koruma için varsayılan kapalıdır.
 
-**Stage-2b (plaka):** (a) `custom_license_plate.pt` sıkı kırpma (conf 0.30, pad %8), küçük plaka 2×; `lp_h` ham ölçülür (ağırlık/tetik kaynağı). (b) **OCR:** fast-plate-ocr (ONNX mobile-vit), yoksa EasyOCR; ortak hatta parlama/far reddi + küçük/karanlık ROI'de CLAHE+2× ikinci şans. (c) **TR-normalizasyon:** `^\d{2}[A-Z]{1,3}\d{2,4}$` parse; pozisyon-farkında düzeltme (rakamda O→0/I→1/B→8, harfte 0→O), il kodu 1–81. (d) **Konsensüs (`PlateVotePool`):** ikamesiz okuma 1.0, 1-ikameli 0.45, 2-ikameli 0.20, kesik alt-dizi 0.25; etkin ağırlık `OCR_güveni × kaynak_kalitesi(lp_h)`. (e) **Dürüstlük zırhları** (videoya-özel sabit yok): min-ağırlık 2.0 + marj + oran kapısı; zemin koşulu (kazanan en az bir kez net okunmuş olmalı); pozisyon-vetosu; boyut kapısı `lp_h<13px` oya giremez, `<26px` → `plate_too_small`.
+**Stage-2b (plaka):** (a) `custom_license_plate.pt` ile sıkı kırpma (conf 0.30, pad %8), küçük plakaları 2× büyütürüz. `lp_h`'yi ham ölçeriz, çünkü hem ağırlığı hem tetiği o besler. (b) **OCR:** önce fast-plate-ocr (ONNX mobile-vit), başarısız olursa EasyOCR. Ortak hatta parlama ve far ışığını reddeder, küçük/karanlık ROI'de CLAHE ve 2× büyütmeyle ikinci şans veririz. (c) **TR-normalizasyon:** plakayı `^\d{2}[A-Z]{1,3}\d{2,4}$` ile ayrıştırır, pozisyona duyarlı düzeltme uygularız (rakam yerinde O→0/I→1/B→8, harf yerinde 0→O), il kodunu 1–81 aralığında doğrularız. (d) **Konsensüs (`PlateVotePool`):** ikamesiz okumaya 1.0, tek ikameliye 0.45, iki ikameliye 0.20, kesik alt-diziye 0.25 ağırlık veririz. Etkin ağırlık `OCR_güveni × kaynak_kalitesi(lp_h)`. (e) **Dürüstlük zırhları** (videoya özel sabit yok): minimum ağırlık 2.0 ile marj ve oran kapısı; zemin koşulu (kazanan plaka en az bir kez net okunmalı); pozisyon vetosu; boyut kapısı. Boyut kapısında `lp_h<13px` ise okuma oya giremez, `<26px` ise sonuç `plate_too_small` işaretlenir.
 
-**Araç özellikleri:** Tip YOLO26-cls (7 D-2 sınıfı: sedan, suv, hatchback, pickup, minibus, panelvan, kamyon; model yoksa stok heuristik). Renk HSV baskın-renk (S<45 → akromatik, kromatikte 12-kovalı hue histogramı → 9 D-2 rengi; ayırt edilemezse atlanır, uydurma yok).
+**Araç özellikleri:** Tipi YOLO26-cls ile belirleriz (7 D-2 sınıfı: sedan, suv, hatchback, pickup, minibus, panelvan, kamyon; model yoksa stok sezgisel girer). Rengi HSV baskın-renk ile buluruz: doygunluk (S) 45 altındaysa akromatik, kromatikse 12 kovalı hue histogramından 9 D-2 rengine ulaşırız. Net ayırt edilemiyorsa alanı boş bırakır, uydurmayız.
 
-**Ön-/son-işleme:** Kare seviyesi fps-bağımsız (`Preprocessor` pass-through, asıl iyileştirme Stage-2 ROI'sinde); plaka ROI'sinde ek olarak opsiyonel süper-çözünürlük + çok-kareli median füzyon. Çıktı şema doğrulayıcıdan geçer (tek doğruluk kaynağı, ASCII-safe). Held-out §4.1, dağıtım §4.3; araç-tip top-1 **0,933** (822 görsel held-out).
+**Ön ve son işleme:** Kare seviyesinde fps'ten bağımsızız (`Preprocessor` pass-through; asıl iyileştirme Stage-2 ROI'sinde). Plaka ROI'sinde opsiyonel süper-çözünürlük ve çok kareli median füzyon devreye girebilir. Çıktıyı, tek doğruluk kaynağımız olan ASCII-güvenli şema doğrulayıcıdan geçiririz. Held-out §4.1'de, dağıtım §4.3'te. Araç-tip top-1 doğruluğumuz **0,933** (822 görsel held-out).
 
 ---
 
 ## 4. Çözümün Sınanması
 
-Sınama üç katmanda yürütüldü: (1) her modelin **held-out** nicel başarımı, (2) gerçek 4K@50fps videolarda **uçtan-uca entegrasyon**, (3) dağıtım (Docker/T4, internetsiz) doğrulaması. **val ≠ test**: raporlanan sayılar modelin görmediği held-out'tan.
+Sınamayı üç katmanda yürüttük: her modelin **held-out** nicel başarımı; hattın gerçek 4K@50fps videolarda **uçtan uca** entegrasyonu; dağıtım doğrulaması (Docker/T4, internetsiz). **val ≠ test** olduğundan raporladığımız bütün sayılar modelin hiç görmediği held-out veriden gelir.
 
-**Tablo 1 — Held-out test başarımı (val ≠ test).** Özel modeller `model.val` ile ayrı test bölmesinde, stok algılayıcı COCO val2017 (5000) üzerinde değerlendirildi.
+**Tablo 1. Held-out test başarımı (val ≠ test).** Özel modelleri `model.val` ile ayrı test bölmesinde, stok algılayıcıyı COCO val2017 (5000) üzerinde değerlendirdik.
 
 | Model | Görev | Kaynak | Görsel | mAP@50 | mAP@50-95 | P | R | F1 |
 |---|---|---|---|---|---|---|---|---|
@@ -107,13 +107,13 @@ Sınama üç katmanda yürütüldü: (1) her modelin **held-out** nicel başarı
 | yolo26l (stok) | Araç + kişi | COCO val2017 | 5.000 | 0.709 | 0.537 | 0.740 | 0.641 | — |
 | Araç-tip (YOLO26-cls)† | 7 D-2 tipi | QoDe-5G | 6.480 | top1 **0,933** | top5 0,999 | — | — | — |
 
-Plaka modeli (mAP@50 0.983 / F1 0.973) hattın en kritik halkasıdır; sigara modelinin düşük mAP@50-95'i (0.457) küçük-nesne zorluğunu yansıtır, bu yüzden pose-geometrisiyle OR-füzyonda kullanılır. †Araç-tip bir **sınıflandırma** modelidir; metriği mAP değil **top-1 0,933 / top-5 0,999** (822 görsel held-out, 7 D-2 tipi). Entegrasyonda 3 gerçek test aracını tutarlı biçimde **suv** olarak sınıfladı (GT yalnız "car" içerir; ince-tip GT yok). Uydurma değer girilmemiştir.
+Plaka modeli (mAP@50 0.983 / F1 0.973) en kritik halkadır. Sigara modelinin düşük mAP@50-95'i (0.457) küçük nesne tespitinin zorluğunu yansıtır. Bu yüzden onu tek başına değil pose geometrisiyle OR-füzyonu içinde kullanırız. †Araç-tip bir **sınıflandırma** modelidir, metriği mAP değil **top-1 0,933 / top-5 0,999** (822 görsel held-out, 7 D-2 tipi). Entegrasyonda model üç test aracını da **suv** sınıfladı (GT yalnızca "car" içeriyor, ince-tip GT'si yok). Hiçbir yere uydurma değer girmedik.
 
-**Şekil 2: mAP@50 karşılaştırma grafiği.** Dört modelin mAP@50 değerleri (custom_license_plate 0.983 / seatbelt 0.895 / smoking 0.856 / yolo26l-COCO 0.709) yatay bar grafiğinde gösterilir; özel modellerin alan-özgü performansı stok COCO başarımını aşar.
+**Şekil 2: mAP@50 karşılaştırma grafiği.** Dört modelin mAP@50'sini (custom_license_plate 0.983 / seatbelt 0.895 / smoking 0.856 / yolo26l-COCO 0.709) yatay bar grafiğinde gösterdik. Özel modellerin alana özgü performansı stok COCO'nun üzerinde.
 
-**Uçtan-uca entegrasyon.** Bağlı kaskad hatasının birikip birikmediğini sınamak için hat, GT'si bilinen gerçek **4K@50fps** videolarda koşturuldu.
+**Uçtan uca entegrasyon.** Kaskadda hataların birikip birikmediğini görmek için hattı, GT'sini bildiğimiz gerçek **4K@50fps** videolarda koşturduk.
 
-**Tablo 2 — Entegrasyon held-out sonuçları (3 video, GT plaka 34TC8532).**
+**Tablo 2. Entegrasyon held-out sonuçları (3 video, GT plaka 34TC8532).**
 
 | Metrik | Sonuç |
 |---|---|
@@ -123,9 +123,9 @@ Plaka modeli (mAP@50 0.983 / F1 0.973) hattın en kritik halkasıdır; sigara mo
 | Davranış tespiti | Doğru senaryoda (sigara/telefon/slalom yalnız ilgili videoda) |
 | Şema doğrulama | **%100 geçerli** |
 
-CER 0.0, ağırlıklı oy konsensüsü + dürüstlük zırhları + TR-normalizasyona borçludur (kare-bazlı OCR gürültüsü birikimle bastırılır). Sistem sigara olmayan videoda yanlış-pozitif üretmez; şema %100 çıktının teslim-edilebilir olduğunu gösterir.
+CER'in 0.0 çıkmasını ağırlıklı oy konsensüsü, dürüstlük zırhları ve TR-normalizasyona borçluyuz. Kare bazlı OCR gürültüsü birikimle bastırılır. Sistem sigara içilmeyen videoda yanlış pozitif üretmedi. %100 geçerli şema, çıktının doğrudan teslim edilebilir olduğunu gösterir.
 
-**Tablo 3 — Dağıtım doğrulaması.**
+**Tablo 3. Dağıtım doğrulaması.**
 
 | Kalem | Hedef / Kısıt | Ölçülen | Durum |
 |---|---|---|---|
@@ -136,13 +136,13 @@ CER 0.0, ağırlıklı oy konsensüsü + dürüstlük zırhları + TR-normalizas
 | Uçtan-uca koşum | Geçerli results.json | Doğrulandı | Geçti |
 | Hız & süre bütçesi | ≤ 10 dk / video | Full-pipeline Apple M-series MPS **~7,5 FPS** (423 kare / 56 s ölçüldü) → tipik 7–9 s test klibi **~56 s** (bütçenin çok altında); detektör (YOLO26l) RTX 5070'te **~27 FPS** | Geçti (bütçe) |
 
-3.63 GB imaj 8 GB sınırının altında geniş marjla durur; gömülü modeller runtime'da ağ erişimsiz tekrarlanabilir sonuç sağlar. **Süre bütçesi:** test klipleri 7–9 s (≤450 kare); full-pipeline MPS'te ölçülen ~7,5 FPS ile ~56 s — 10 dk bütçesinin çok altında. **Hızda dürüstüz:** detektör RTX 5070'te ~27 FPS ölçüldü; tam-hat hızı kare-başı OCR/oylama (CPU) maliyetiyle sınırlıdır ve T4 dağıtımında `onnxruntime-gpu` + TensorRT FP16 + kare-atlama (stride) ile artırılır (optimizasyon kalemi). Fiziksel T4 elde olmadığından T4 FPS'i ayrıca ölçülecektir. Ek olarak kod **540 s süre-bütçesi guard'ı** içerir: işleme bu süreyi aşarsa döngü kesilip eldeki sonuçla geçerli `results.json` yazılır → 10 dk timeout'ta çıktısız kalma riski **sıfırlanır** (uzun/yavaş videoda bile geçerli çıktı garanti). Güven; görmediği veride yüksek başarım + gerçek videoda hatasız entegrasyon + hedef donanımda bütçe içi çevrimdışı çalışmaya dayanır.
+3.63 GB'lik imaj 8 GB sınırının epey altında. Modeller imaja gömülü olduğu için sistem çevrimdışı da tekrarlanabilir sonuç üretir. **Süre bütçesi** açısından rahatız: test klipleri 7–9 s sürüyor (≤450 kare), MPS'te ölçtüğümüz ~7,5 FPS ile ~56 s'de işleniyor, yani 10 dk bütçenin çok altında. Hız konusunda fazlasını iddia etmiyoruz: detektörü RTX 5070'te ~27 FPS ölçtük, ama tam hattın hızı kare başına OCR ve oylama (CPU) maliyetiyle sınırlı. Bunu T4'te `onnxruntime-gpu`, TensorRT FP16 ve kare atlama ile yükseltmeyi planlıyoruz. T4 FPS'ini fiziksel kart elimize geçince ölçeceğiz. Koda bir de **540 s süre-bütçesi guard'ı** ekledik: işleme bu süreyi aşarsa döngüyü kesip o ana kadarki sonuçla geçerli bir `results.json` yazar, böylece timeout'ta çıktısız kalma riskini **sıfırlarız**. Güvenimiz üç ayağa dayanır: görmediği veride yüksek başarım, gerçek videolarda hatasız entegrasyon, hedef donanımda bütçe içinde çevrimdışı çalışma.
 
 ---
 
 ## 5. Kaynakça
 
-Modeller aşağıdaki açık kaynaklardan türetilen verilerle eğitilmiştir (val ≠ test korunarak sızıntı engellendi; D-2 §7).
+Modellerimizi aşağıdaki açık kaynaklardan türettiğimiz verilerle eğittik. val ≠ test ilkesini koruyarak veri sızıntısını engelledik (D-2 §7).
 
 **Açık veri setleri**
 
