@@ -1,0 +1,14 @@
+# teknofestv3 — çalışma-zamanı bağımlılıkları (Tesla T4 / CUDA 12.1 imajı)
+# NOT: torch + torchvision Dockerfile'da cu121 indeksinden kurulur (T4 sm_75 uyumu) —
+# burada DEĞİL (yanlışlıkla CPU/yanlış-CUDA wheel çekmeyi önler).
+ultralytics==8.4.66          # YOLO26 (tespit + pose) — v2 ile aynı sürüm
+numpy==2.1.3                 # torch/ultralytics/easyocr ile uyumlu sabit sürüm
+opencv-python-headless==4.10.0.84   # GUI'siz OpenCV (imaj küçük; libGL gerekmez)
+easyocr==1.7.2              # plaka OCR (yedek motor; modeli build'de gömülür)
+fast-plate-ocr==1.1.0      # plakaya-özel ONNX OCR (birincil; 3/3 exact — modeli build'de gömülür)
+onnxruntime==1.20.1        # fast-plate-ocr çalıştırıcı (CPU; plaka kırpıkları küçük)
+pydantic==2.13.4           # roadguard veri sözleşmeleri (schema.py)
+pyyaml==6.0.3              # config yükleme
+pillow==11.0.0
+scipy==1.14.1
+shapely==2.0.6

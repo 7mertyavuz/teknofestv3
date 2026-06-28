@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.DS_Store
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+# çalışma çıktıları
+data/input/*.mp4
+data/output/*.json
+eval_baseline/
+runs/
+# büyük geçici / kişisel
+*.log
+.idea/
+.vscode/

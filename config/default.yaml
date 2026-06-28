@@ -1,0 +1,473 @@
+# =============================================================================
+# RoadGuard — Merkezi Yapılandırma (tek doğruluk kaynağı)
+# Hiçbir eşik/flag koda gömülmez; tüm çalışma zamanı davranışı buradan yönetilir.
+# Açıklamalar için bkz. config/README.md
+#
+# PROFİLLER (config/profiles/*.yaml): bu taban dosyanın ÜZERİNE derin-merge edilir.
+#   python -m roadguard --profile server      # sunucu: yolo26l, CUDA, büyük imgsz (VARSAYILANLA AYNI)
+#   python -m roadguard --profile laptop      # geliştirme: yolo26s, MPS/CPU, hafif
+#   python -m roadguard --profile v4-finetune # ESKİ yolov8m — yalnız A/B kıyas tabanı (production DEĞİL)
+#   ROADGUARD_PROFILE=server python -m roadguard   # env ile de seçilebilir
+# Mevcut profiller: `python -c "from roadguard.config import available_profiles as a; print(a())"`
+# Bu repo SUNUCU dağıtımı içindir (edge değil) → varsayılan dedektör yolo26l.
+# =============================================================================
+
+runtime:
+  device: auto                  # auto | cpu | cuda | mps  (auto: CUDA→MPS→CPU otomatik seçer; sabit 'cuda' CUDA'sız makinede/macOS'ta kırılır)
+  source: data/samples/ornek.mp4   # pakete gömülü sentetik demo; gerçek footage için kendi yolunuzu/kamera indeksini verin
+  log_level: INFO               # DEBUG | INFO | WARNING
+  # AI çalışma modu:
+  #   real → her zaman gerçek YOLO (gerçek trafik footage'ı için)
+  #   mock → numpy deterministik (ağırlıksız, her makinede çalışan demo)
+  #   auto → ağırlık+ultralytics varsa gerçek YOLO; ANCAK gömülü sentetik örnekte mock
+  #          (COCO-YOLO renkli blokları araç olarak göremez → 0 bbox olurdu)
+  ai_mode: real                 # real | mock | auto  (v3/D-2: SABİT real — yol-tabanlı dallanma YOK, §5.4 uyumu)
+
+models:
+  detector:
+    # VARSAYILAN BİRİNCİL DEDEKTÖR: stok YOLO26l (Ultralytics 8.4 — en güncel YOLO).
+    # Sunucu dağıtımı için doğruluk-önce seçim (edge kısıtı yok). COCO sınıflarından
+    # car/truck/bus/motorcycle + person + 'cell phone'→phone (taxonomy) üretir.
+    #   • Daha hafif/cascade için: --profile laptop  (yolo26s)
+    #   • 11-sınıf fine-tune (minibus/license_plate dahil, mAP50 .788) için:
+    #     --profile v4-finetune  (ESKİ yolov8m A/B tabanı — production değil; weights/yolguvenligi_types_v4.pt)
+    # Ağırlık yoksa detection/yolo.py LOGLU olarak stok yolo26s.pt'ye düşer.
+    # EŞİK REHBERİ (hidden_prototip gerçek-video dersi): STOK model gerçek trafikte
+    # araçlara 0.05-0.15 conf verir → stokta conf 0.08-0.12; fine-tune (v4) → 0.25-0.35.
+    path: weights/yolo26l.pt
+    conf: 0.10                     # stok YOLO26 düşük conf üretir; FP'ler dedup+sınıf-oyu+min_track ile elenir
+    iou: 0.45
+    imgsz: 768                    # sunucu: doğruluk için 768 (stok için 640 de yeterli; v4 768'de eğitildi)
+    # minibus stok COCO'da YOK (yalnız v4 fine-tune üretir); listede kalması zararsız.
+    vehicle_classes: [car, truck, bus, minibus, motorcycle]
+    mock_bright_threshold: 90     # mock dedektör (ağırlık yokken) parlaklık eşiği
+    mock_min_area: 300            # mock dedektör min blob alanı (şerit gürültüsünü eler)
+  driver_state:
+    # Backend seçimi:
+    #   yolo → fine-tune detection ağırlığı (phone/smoking/... sınıfları) gerekir;
+    #          STOK COCO yolo26l bu sınıfları ÜRETEMEZ (sessiz sıfır).
+    #   pose → YOLO26-pose keypoint geometrisi: bilek↔ağız/kulak GÖRELİ yakınlığı
+    #          (v1'in gerçek videoda ölçülmüş MediaPipe geometrisinin saf-YOLO portu;
+    #          fine-tune ağırlık GEREKTİRMEZ). Bkz. roadguard/driver_state/pose.py.
+    #   auto → pose ağırlığı diskte varsa pose, yoksa yolo.
+    backend: auto
+    # yolo backend ağırlığı: stok yolo26l (pose varsayılan olduğundan bu yalnız backend=yolo'da
+    # kullanılır). RoadGuard özel eğitimli domain modeli (phone/smoking/seatbelt) için bunu
+    # weights/custom_driver.pt yapıp `backend: yolo` seçin (bkz. docs/egitim.md).
+    path: weights/yolo26l.pt
+    conf: 0.45                     # fine-tune/domain model için (yolo backend)
+    imgsz: 640                     # 320 küçük telefonu kaybediyordu (cam-ardı sürücü); 640 korur
+    # Modelin HAM tespit sınıfları. 'seatbelt' = kemer ŞERİDİ (kemer VAR) tespiti;
+    # 'no_seatbelt' İHLALİ bundan TÜRETİLİR (Katman B), bu yüzden burada yer almaz.
+    classes: [phone, smoking, seatbelt, fatigue]
+    # --- pose backend ayarları ---
+    # l-pose: minimum alana (sürücü kırpığı) maksimum model — kullanıcı kararı.
+    # Diskte yoksa koda gömülü LOGLU fallback stok yolo26s-pose.pt'ye düşer.
+    pose_path: weights/yolo26l-pose.pt
+    pose_conf: 0.25               # pose kişi tespiti min güveni
+    pose_kp_conf: 0.30            # keypoint görünürlük eşiği
+    pose_imgsz: 640
+    phone_ear_ratio: 0.40         # bilek↔kulak < bu × yüz-genişliği → telefon adayı (v1 K-012 ölçümü)
+    smoke_mouth_ratio: 0.60       # bilek↔ağız < bu × yüz-genişliği → sigara adayı
+    roi_min_side: 320             # sürücü ROI kısa kenarı bu boyuta büyütülür (max 4x)
+    roi_max_upscale: 4.0
+    roi_enhance: true             # CLAHE + gamma (cam arkası karanlık kabini açar)
+    # --- sürücü-içi sıkı kırpma ---
+    # Modele giden alan MINIMUM olmalı: kabin fallback'i (araç üst %55'i, ön cam +
+    # yolcu yansımaları dahil) önce SÜRÜCÜNÜN kişi kutusuna (+pad_ratio) daraltılır;
+    # pose + v4 nesne kanıtı yalnız bu kırpıkta koşar. Kutu track başına önbelleğe
+    # alınır (sürücü araç içinde sabit oturur) → kare başına TEK pose geçişi korunur.
+    driver_crop:
+      enabled: true
+      pad_ratio: 0.10             # sürücü kutusu etrafına bırakılan pay (+%10)
+      redetect_every: 15          # önbellekteki kutu bu kadar karede bir tazelenir
+      min_gain: 1.25              # ROI/kutu alan oranı bunun altındaysa kırpma atlanır (ROI zaten dar)
+      # Devasa sürücü ROI sınırı (yalnız kişi-kutusu YOKKEN geometrik kabin fallback'inde):
+      # sürücü ROI'si kare alanının bu oranını AŞARSA sürücü köşesine doğru o orana KIRPILIR
+      # (model minimum-alan ilkesi; devasa ROI = ön cam + yolcu yansımaları = FP kaynağı).
+      # Kişi-kutusu varken ROI zaten dardır → bu sınır DEVREYE GİRMEZ (davranış değişmez).
+      # K-004: kare-alanına GÖRELİ oran, videoya-özel sabit DEĞİL. 0 = kapalı (eski davranış).
+      max_roi_area_ratio: 0.10
+      # Alternatif politika: kırpmak yerine devasa-fallback karesinde sürücü-durum
+      # çıkarımını tamamen ATLA (engine boş DriverState → negatif oy → FP üretmez).
+      skip_if_oversized: false
+    # --- hibrit ROI nesne kanıtı (pose backend ile) ---
+    # Fine-tune dedektör (vars: models.detector.path) sürücü ROI'sinde ayrıca koşar;
+    # phone NESNESİ görülürse doğrudan bayrak + latch_frames boyunca geçerli kalır
+    # (nesne her karede yakalanmaz; latch sigara FP'sine dönüşmeyi önler). NESNE
+    # kanıtı geometriden üstündür (telefon varken el-ağızda 'sigara' sayılmaz).
+    roi_objects:
+      enabled: true
+      conf: 0.25
+      imgsz: 640
+      # BASTIRMA latch'i: GÜÇLÜ telefon nesnesi (conf >= suppress_conf) son
+      # görüldükten sonra bu kadar kare boyunca geometrik 'sigara' bastırılır;
+      # telefon BAYRAĞI ileri taşınmaz (iddia yalnız gerçek kanıt karelerinde →
+      # 16/8 sıklık ayrımını yapar). suppress_conf > conf: bayraklama duyarlı,
+      # bastırma muhafazakâr (düşük güvenli FP gerçek sigarayı ezemez).
+      suppress_frames: 25
+      suppress_conf: 0.30
+    # --- OPSİYONEL İKİNCİ MODEL: özel eğitimli sigara dedektörü ---
+    # roi_objects'in YANINDA (replace DEĞİL) sürücü ROI'sinde yalnız 'smoking' NESNESİ
+    # arar; bulgusu mevcut 'smoking' kanıtına OR'lanır (16/8 oylamasından geçer).
+    # phone yolu (roi_objects nesne-kanıtı + bastırma latch'i) HİÇ değişmez.
+    # K-004 A/B dersi: custom_smoking'i roi_objects'e DROP-IN koymak phone kanıtını
+    # siliyordu (video_2 telefon kaçtı) — ayrı kanal regresyonu önler. Held-out mAP50
+    # 0.856 (FTR §4). GRACEFUL-ABSENT: ağırlık diskte yoksa (CI/takım — gitignore)
+    # yüklenmez, davranış değişmez (no-op, loglanır).
+    smoking_model:
+      enabled: true
+      path: weights/custom_smoking.pt
+      conf: 0.30
+      imgsz: 640
+    # --- Stage-1 kanıt füzyonu ---
+    # Dedektör tam karede phone/smoking NESNESİ görür ve kutu araca düşerse sürücü
+    # bayrağına OR'lanır (Katman B oylamasından geçer). v4/yolo26 'phone' üretebilir.
+    fuse_detections: true
+    aux_classes: [phone, smoking]
+    # --- Katman B: ID-merkezli zaman-oylaması (DriverStateEngine + TrackVoter) ---
+    # Ham bayrak (Katman A: pose-hibrit / YOLO26l / mock) her track_id için pencere
+    # boyunca oylanır; bayrak yalnız son `window` karenin >= `min_votes` tanesinde
+    # True ise event'e döner → tek-karelik FP'ler (flicker) elenir. Bu, eski
+    # per-(track,alan) StabilityTracker 16/8 çağrısının ID-merkezli karşılığıdır
+    # (varsayılan 16/8 → aynı davranış); araç sahneden çıkınca tampon `max_age`
+    # karede düşer (bellek). Tümü ayarlanabilir.
+    voting:
+      window: 16                  # oylama penceresi (kare)
+      min_votes: 8                # pencerede aktiflik için min True oy (16/8 = mevcut davranış)
+      max_age: 30                 # ID bu kadar kare görünmezse tamponu düşür
+    # Kemer ihlali (no_seatbelt) TÜRETME aç/kapa. Model kemer ŞERİDİNİ (kemer VAR) tespit
+    # eder; ihlal bunun yokluğundan Katman B'de türetilir. Kemer görünmeyen (cam-ardı/loş/
+    # uzak) footage'da yanlış pozitif üretebileceğinden VARSAYILAN KAPALI. Net kemer
+    # görünümü olan kamerada + domain modelinde açın.
+    no_seatbelt:
+      enabled: false
+
+# Sürücü/Yolcu atama: araç kabininde EN ALTTAKİ (berabere → en sağdaki) kişi HER ZAMAN
+# sürücüdür (dikey öncelikli, POZİSYONEL — kimliğe kilitlenmez). Diğer herkes yolcu; bir
+# kişi confirm_frames ardışık karede yolcu kalırsa YOLCU olarak kilitlenir (artık o araçta
+# sürücü adayı olamaz). Böylece track-ID titrese de görünen sağ-en-alt kişi hep sürücüdür.
+driver_lock:
+  enabled: true
+  confirm_frames: 3             # kaç ardışık karede yolcu → YOLCU kilidi (kullanıcı kararı: 3)
+  corner: bottom_right          # sürücü konumu (dikey öncelikli): bottom_right | bottom_left | top_right | top_left
+  person_classes: [person]      # Stage-1'de kişi olarak sayılan sınıf adları
+  min_containment: 0.5          # kişi kutusunun araç kutusuyla min örtüşme oranı
+  roi_pad: 0.10                 # sürücü ROI'si kesilirken kenarlardan bırakılan pay (+%10 — minimum alan)
+  max_age: 30                   # araç bu kadar kare görünmezse kilit unutulur
+  mock_synthetic_person: false  # mock dedektörde demo için sentetik sürücü üret (test/sunum)
+
+tracking:
+  tracker: bytetrack            # bytetrack | botsort
+  reid_model: null              # weights/yolo26s-reid.pt (opsiyonel)
+  # Ağır aşama + ÇIKTI kapısı: track bu kadar kare yaşamadan driver/plaka aşamalarına
+  # girmediği gibi annotation/event de üretmez (gerçek video_3 dersi: ByteTrack
+  # parçalanması 2-karelik hayalet 'truck' track'leri doğuruyor — çıktıya sızmamalı).
+  min_track_frames: 3
+  # ÇIKTI kapısı (annotation/event): bir track çıktı üretmek için en az bu kadar kare
+  # KÜMÜLATİF görülmüş olmalı — kısa-ömürlü hayalet track'ler (ByteTrack parçalanması:
+  # 1-2 karelik motorcycle/truck — gerçek ölçüm: video_3 tid=1/4/5) kanıt videosuna/
+  # event'e sızmaz. Heavy-stage kapısından (min_track_frames) AYRI ve >= olmalı; vars.
+  # min_track_frames (mevcut davranış birebir korunur). Ayrıca takip KURULMAMIŞ
+  # (track_id yok) tespitler hiçbir koşulda çıktı/event üretmez (koda gömülü guard).
+  min_output_frames: 3
+  # Track başına sınıf oylaması: tek-kare 'car↔truck' titremesini düzeltir. Oy
+  # ALAN-AĞIRLIKLI (conf × bbox_alan/kare_alan): yakın/büyük araç sınıfı daha
+  # güvenilir — gerçek ölçüm: uzak araç onlarca kare 'truck' görünüyor, yakınlaşınca
+  # 'car'; alan ağırlığı yakın net kanıtın uzak belirsiz kanıtı devralmasını sağlar.
+  # decay=1.0 (saf kümülatif): araç sınıfı fiziksel sabit, tüm ömür kanıtı birikir;
+  # decay<1 + alan-ağırlığı GEÇ gelen büyük-alan yanlış tespite salınım yaratıyordu
+  # (video_3 car→truck→car). area_floor: çok uzak araç oyu sıfırlanmasın diye taban.
+  class_vote:
+    enabled: true
+    decay: 1.0
+    area_floor: 0.0008
+
+preprocessing:
+  headlight_suppression: true
+  motion_blur_correction: true
+  reflection_suppression: true
+  occlusion_handling: true
+
+stability:
+  window: 16
+  min_consistent: 8
+
+plate:
+  # Sweet spot: araç MERKEZİ bu normalize bölgedeyken OCR aktif. Yanal yaklaşan
+  # araçlar (kadraj kenarından girip çapraz geçenler) için x aralığı geniş tutulur
+  # (eski 0.30-0.70, sağdan yaklaşan aracı hiç okuyamıyordu — gerçek video_3 dersi).
+  # CANLI/telefon kamera düzeltmesi (19 Haz): eski dar bölge (0.18-0.85 / 0.40-0.90)
+  # test-video geometrisine (araç alttan yaklaşır) ayarlıydı → telefonu elde çevirince
+  # araç bu bölgeye girmeyince plaka HİÇ okunmuyordu (OCR tetiklenmiyordu). Artık
+  # neredeyse tam-kadraj; kaliteyi frame-BÖLGESİ değil PİKSEL-BOYUT kapısı
+  # (lp_vote_min_px / min_pixel_height) + oy havuzu + dürüstlük zırhları sınırlar.
+  sweet_spot: {x1: 0.03, y1: 0.06, x2: 0.97, y2: 0.98}
+  voting_buffer_size: 7         # bu kadar okumada bir konsensüs değerlendirilir (rejected event kadansı)
+  consensus_ratio: 0.6          # tek-varyant ayrı-aday kararı için kazananın toplam pay eşiği
+  ocr_lang: [tr]
+  regex: '^\d{2}[A-Z]{1,3}\d{2,4}$'
+  min_pixel_height: 16          # bu yükseklik altındaki plaka ROI'leri kalite tetikler
+  ocr_max_side: 1280            # OCR girişi uzun kenar sınırı (4K crop yavaşlatmasın)
+  ocr_enhance_below_px: 64      # ROI yüksekliği bunun altındaysa CLAHE+2x varyantı denenir
+  # OCR motoru: easyocr | paddleocr | fastplate. Seçilen motor kurulu değilse her
+  # durumda LOGLU olarak easyocr'a düşülür (çıktı EasyOCR readtext sözleşmesine
+  # normalize edilir; _merge_line + TR-normalizasyon + küçük-ROI ikinci-şans motor-
+  # bağımsız çalışır). VARSAYILAN fastplate — plakaya-ÖZEL hafif ONNX modeli
+  # (global-plates-mobile-vit-v2, ~5MB; pip: fast-plate-ocr + onnxruntime).
+  # ⚠ ÖLÇÜLDÜ (18 Haz 2026, 3 gerçek video, MPS-YOLO + CPU-ONNX, GT=34TC8532,
+  # CER=Levenshtein/8, ana-track=en çok kare):
+  #   BASELINE (easyocr):  v1 34TC8532 CER0.0 exact | v2 34TC8532 CER0.0 exact |
+  #                        v3 PENDING partial=24IC8532 CER0.25 (uzak karelerde
+  #                        sistematik 3→2 il-kodu + T→I misread, konsensüse girmez)
+  #   FASTPLATE:           v1 34TC8532 CER0.0 exact | v2 34TC8532 CER0.0 exact |
+  #                        v3 34TC8532 CONFIRMED CER0.0 exact (3/3 GT eşleşti)
+  # → fastplate video_3'ü kurtarır (CER 0.25→0.0) VE v1/v2 exact'ini KORUR. K-004:
+  # config-driven, oran-bazlı, videoya-özel sabit/kara-liste YOK — motor seçimi.
+  # fast-plate-ocr kurulu değilse easyocr'a düşer (yukarıdaki baseline davranışı).
+  ocr_engine: fastplate         # easyocr | paddleocr | fastplate
+  # fast-plate-ocr modeli (ocr_engine=fastplate iken): ilk koşuda otomatik iner (~5MB).
+  fastplate_model: global-plates-mobile-vit-v2-model
+  ocr_gpu: true                 # OCR'ı (EasyOCR/PaddleOCR) GPU'da çalıştır; CUDA yoksa otomatik CPU
+  # Sıkı plaka kırpma: ÖZEL EĞİTİMLİ LP dedektörü (custom_license_plate, YOLO26s, tek
+  # sınıf 'license_plate'; held-out mAP50 0.983 / mAP50-95 0.707 — 9123 görsel keremberke/HF).
+  # 19 Haz 2026 stok-vs-custom 3-video A/B: plaka 3/3 PLATE_CONFIRMED KORUNDU (regresyon yok)
+  # → custom VARSAYILAN'a terfi (bkz. docs/degerlendirme.md "Custom model A/B").
+  # Ağırlık repoda LFS ile gelir (`git lfs pull`); yoksa loglu olarak stok lp_yolo11n.pt/geniş-crop'a düşülür.
+  lp_detector:
+    enabled: true
+    path: weights/custom_license_plate.pt   # önceki stok: weights/lp_yolo11n.pt
+    conf: 0.30
+    imgsz: 640
+    pad_ratio: 0.08             # sıkı kutu etrafına bırakılan pay
+  # Boyut-farkında kanıt politikası (gerçek video dersi: uzak karelerin sistematik
+  # misread'leri — '041C8532', T→I ile formatça GEÇERLİ '34IC8532' — sayıca üstünlük
+  # kurup konsensüsü kilitliyordu; QoD da ilk consensus_fail'e kadar uyuyordu):
+  # BÖLGE ≠ KALİTE ayrımı (19 Haz 2026 ölçümü; ROADGUARD_LP_MEASURE tanı log'u, 3 gerçek
+  # video, fastplate + custom_license_plate LP, MPS). sweet_spot artık GENİŞ (canlı/
+  # telefon kadrajında bölge kısıtı pratikte yok) → kaliteyi YALNIZ LP-kırpık piksel
+  # YÜKSEKLİĞİ kapısı korur. Ölçülen lp_h ayrımı (asıl araç track'i):
+  #   YAKIN/NET (oylanan, GT'ye eşit 34TC8532, conf~0.97):
+  #     video_1 lp_h 81-83 | video_2 lp_h 74-76 | video_3 lp_h 67-74  → MIN doğru = 67
+  #   UZAK/MİSREAD (wide sweet_spot'ta erken oylanıp YANLIŞ onaya — 14TC857/34TC8577,
+  #     conf yüksek ama 3→1 il-kodu + 2→7 son-hane hatası): lp_h 24-28 → MAX yanlış = 28
+  # → AYIRMA PENCERESİ [28, 67] geniş; eşik 45 ortaya yakın (yanlışa +17px, doğruya
+  #   -22px tampon). 13 (eski) video_3'te HİÇBİR çöp okumayı kesmiyordu (GATED=0) →
+  #   wide sweet_spot ile 14TC857 yanlış-onaylanıyordu; 45 uzak misread'i oya sokmaz,
+  #   yakın net okuma (lp_h>=67) onayı korur. K-004: ölçülen sayı, videoya-özel sabit/
+  #   blacklist YOK — saf piksel-boyut kapısı. Telefonda plaka büyüyünce (yaklaşınca)
+  #   lp_h>=45 olur olmaz okur; bölge neresi olursa olsun (canlı düzeltmesi).
+  lp_vote_min_px: 45            # sıkı LP kırpığı bundan ALÇAKSA okuma oylamaya girmez (ölçüm: yanlış≤28, doğru≥67)
+  lp_qod_below_px: 45           # bundan alçak LP görüldüğü AN 'plate_too_small' kalite tetiği (oylanamayan = kalite iste)
+  ocr_second_variant: true      # okuma güveni düşükse CLAHE+2x varyantıyla ikinci deneme
+  ocr_second_variant_below: 0.5 # bu güvenin altındaki okumalarda varyant devreye girer
+  # GRİ-BÖLGE ERKEN-OKUMA YOLU (SOTA-bilgili, hepsi guard'lı; default-on, graceful).
+  # Gerçek video_3 dersi: doğru '34TC8532' lp_h 67-83'te NET; uzak misread '14TC857' lp_h
+  # 24-28'de. lp_vote_min_px=45 PLAIN (tek-motor, SR'siz) okumalar için GÜVENLİK AĞI olarak
+  # KALIR. Gri-bölge [gray_zone_min_px, lp_vote_min_px) yalnız EK güvencelerle oya girer:
+  # (a) SR/güçlü upscale + (b) çok-kareli füzyon (MF-LPR2 mantığı, hareketli araç için asıl
+  # kazanım: son N kırpık ortak-yüksekliğe hizalanıp median'la birleşir → gürültü düşer) +
+  # (c) çok-motor MUTABAKATI (fastplate + ikinci motor AYNI format-geçerli plaka) VEYA
+  # çok-yüksek conf. Böylece 14TC857 tek-motor misread'i oya GİREMEZ. Bu okumalar normal oy
+  # havuzuna girer → position-veto + min_weight + confirm-zemin ONLARI DA denetler (yanlış-
+  # onay imkânsız). weight_cap < 1: gri-bölge okuması tam ağırlık ALMAZ (net/yakın ezer).
+  # K-004: videoya-özel sabit/blacklist YOK; saf piksel-boyut + okuma-kalitesi kapısı.
+  # ⚠ A/B ÖLÇÜMÜ (19 Haz 2026, 3 gerçek video, MPS-YOLO + fastplate, GT=34TC8532):
+  # early_read.enabled=true (gray_zone_min_px=28, agreement=true, high_conf=0.90) video_3'ü
+  # 2.10s → 1.26s ERKEN onayladı AMA değer YANLIŞ çıktı: 34TC8512 (son hane 3→1 misread).
+  # KÖK NEDEN (ROADGUARD_ER_TRACE ölçümü, lp_h 28-32 gri-bölge): fastplate okuması 34TC8532 /
+  # 34TC8512 / 34TC8577 arasında salınıyor ve YANLIŞ okumalar da conf 0.91-0.96 (conf ayırt
+  # ETMİYOR); ikinci motor (easyocr) bu boyutta plakayı HİÇ okuyamıyor (ag=None) → mutabakat
+  # ASLA oluşmuyor, yalnız high_conf-kaçışı oya giriyor ve yanlış okuma birikip onaya gidiyor.
+  # SR (3x Lanczos+unsharp) + 5-kare median füzyon AKTİFKEN bile salınımı ayıramadı → lp_h<45'te
+  # son-hane (3 vs 1) çözünürlük ALTINDA; bilgi kırpıkta YOK, SR üretemiyor. FİZİKSEL LİMİT.
+  # agreement-only (high_conf=2.0) denendi → gri-bölge oyu HİÇ girmiyor (easyocr hiç uyuşmuyor)
+  # = davranış baseline ile AYNI (3/3 EXACT, video_3 2.10s). correctness > latency (K-004):
+  # erken-AMA-yanlış config ASLA bırakılmaz → early_read VARSAYILAN KAPALI. Scaffolding +
+  # guard'lar + testler KORUNUR; gerçekten korrobore-edilebilir (ikinci motor uyuşan) sahnede
+  # açılabilir. video_3 gecikmesi (2.1s) lp_vote_min_px=45 GÜVENLİK AĞIYLA birlikte KALIR.
+  early_read:
+    enabled: false              # A/B: true iken video_3 1.26s'te YANLIŞ (34TC8512) onaylandı → KAPALI (correctness>latency)
+    gray_zone_min_px: 28         # bu lp_h ALTINDA EK yol da kapalı (çok küçük; ölçüm: misread<=28)
+    fuse_frames: 5               # track başına füzyona girecek son N gri-bölge kırpığı (1 → füzyon kapalı)
+    sr_scale: 3.0                # SR yoksa Lanczos+unsharp büyütme ölçeği
+    require_engine_agreement: true  # oya girmek için ikinci motor MUTABAKATI ara (yoksa high_conf eşiği)
+    high_conf: 0.90              # mutabakat yoksa/kurulamazsa bu conf üstü tek-motor okuma oya girebilir
+    weight_cap: 0.6              # gri-bölge oyunun max kanıt ağırlığı çarpanı (net okuma ezsin)
+    # agreement_engine:         # (ops.) mutabakat motorunu açıkça seç; boşsa birincilden FARKLI motor
+  # Format-öncelikli KALICI oy havuzu (roadguard/plate/normalize.py):
+  # oylar track ömrü boyunca birikir (redde sıfırlanmaz). KARAR yalnızca ikamesiz
+  # format-geçerli ham okumalarla verilir ve her okuma OCR GÜVENİYLE ağırlıklanır
+  # (yakın/net okuma uzak/bulanık okumayı ezer — uzaktan sistematik 3→0 hatası
+  # koruması). İkameli düzeltmeler (fix1/fix2_weight) ve kesik okumalar
+  # (substring_weight) yalnız 'partial' kanıt alanına katkı yapar.
+  voting:
+    min_weight: 2.0             # kazanan için min toplam güven-ağırlığı (~2-3 sağlam okuma).
+    # NOT (19 Haz A/B — K-004): 1.5'e düşürmek ERKEN onay sağlıyor AMA video_3'te YANLIŞ
+    # onaya yol açtı (14TC857 — uzak plaka erken karelerde güvenilir okunmuyor). Erken-onay
+    # accuracy'yi bozuyor → 2.0'da KALIR (correctness > latency). Uzak plakayı daha erken
+    # DOĞRU okumak için yol = daha iyi erken-kare crop (LP-dedektör/SR), eşik düşürmek DEĞİL.
+    margin_weight: 1.5          # kazanan ile ikinci ham aday arasındaki min ağırlık farkı
+    fix1_weight: 0.45
+    fix2_weight: 0.20
+    substring_weight: 0.25
+    # Okumanın kanıt ağırlığı = OCR güveni × kaynak kalitesi (LP kırpık yüksekliği):
+    size_full_px: 40            # LP yüksekliği >= bu → tam ağırlık (1.0)
+    size_floor: 0.15            # küçük-ama-oylanabilir okumanın taban ağırlığı
+    no_lp_weight: 0.5           # LP dedektörü plakayı bulamadıysa (geniş-crop okuması) ağırlık
+    # Pozisyon-hizalı karakter füzyonu: ayrı-aday kararı başarısızsa (iki format-
+    # geçerli okuma tek karakterde ayrışıyor — ör. T↔I, 3↔0 misread'i) aynı yapıdaki
+    # okumalar pozisyon pozisyon birleşir; her pozisyon char_ratio payını geçerse onay.
+    # Pozisyon-hizalı karakter füzyonu: OCR aynı plakayı varyantlara böldüğünde
+    # (34TC8532 / 04TC8532 / 34IC8532 — 3↔0, T↔I misread'i) pozisyon pozisyon
+    # birleştirir. ONAY için her pozisyonda kazanan ikinciyi 'char_margin' MUTLAK
+    # ağırlıkla geçmeli; bir pozisyon belirsizse (ör. video_1'de 0↔3 neredeyse eşit,
+    # veya video_3'te uzaktan I↔T) → dürüst 'pending' (ASLA yanlış plaka onaylanmaz).
+    # Net olduğunda doğru plakayı onaylar (video_2: 34TC8532). char_consensus=false
+    # ise füzyon yalnız 'partial' kanıt izinde kalır, onaya girmez.
+    char_consensus: true
+    char_margin: 1.5            # KANIT-İZİ (best_partial) füzyonunda bir pozisyonda kazananın ikinciyi geçmesi gereken min mutlak ağırlık farkı
+    # ONAY-SIKI pozisyon eşiği (char_margin'den >= olmalı; None → char_margin'e düşer):
+    # CONFIRMED için HER karakter pozisyonunda kazanan, ikinciyi bu MUTLAK ağırlıkla
+    # geçmeli — geçemeyen pozisyon belirsizdir → plaka ONAYLANMAZ, dürüst 'pending'
+    # (best_partial kanıt izi yine raporlanır). Gerçek video ölçümü (17 Haz, stok yolo26l):
+    # yanlış ilk-harf '0' pos0-margin'i ~1.55, doğru '3' margin'i ~1.52 → ikisi de
+    # char_margin=1.5'i geçip YANLIŞ onaya gidiyordu. 2.0 belirsiz ilk-karakteri PENDING
+    # yapar (yanlış-onay sıfır > çok-onay); NET plaka (video_2, margin yüksek) onaylanır.
+    # K-004: oran/ağırlık temelli, videoya-özel sabit DEĞİL — okuma-belirsizliğine bağlı.
+    confirm_min_char_margin: 2.0
+    # CONFIRM zemin koşulu: kazanan plaka EN AZ BİR kez bu etkin-ağırlıkla (OCR güveni ×
+    # kırpık-yükseklik kalitesi) okunmuş olmalı = "plakayı en az bir kez NET/YAKIN gördük".
+    # Gerçek video_3 dersi: UZAK plaka tutarlı YANLIŞ okunup (24IC8532) yalnız birikimle
+    # onaya gidebiliyordu; bu zemin hep-uzak okumayı dürüst 'pending'e çevirir. 0 = kapalı.
+    confirm_peak_weight: 0.30
+
+speed:
+  mode: metric                  # metric | tripwire | ipm | disabled
+  calibration_file: null
+  relative_threshold: 0.012     # anormal göreli hız bayrağı eşiği (ekran/kare) — her modda
+  window: 8                     # göreli hız için kayar pencere (kare)
+  tripwire:
+    line_a_y: 0.40              # normalize ekran konumu (0-1)
+    line_b_y: 0.70
+    real_distance_m: 20.0       # iki çizgi arası gerçek mesafe (metre)
+  # --- metric (oto-kalibrasyon, kalibrasyonsuz km/h) — roadguard/speed/calibration.py ---
+  plate_width_m: 0.520          # TR Tip-1 plaka standardı (520 mm) — varsa en kesin ppm kaynağı
+  plate_aspect_tolerance: 0.35  # 520/120≈4.33'ten sapma toleransı (foreshortening koruması)
+  vehicle_width_m:              # sınıf-bazlı tipik genişlik (m) — araç ppm yedeği
+    car: 1.80
+    minibus: 2.00
+    truck: 2.50
+    bus: 2.50
+    motorcycle: 0.80
+  vehicle_ppm_weight: 0.25      # araç-genişliği ppm örnek ağırlığı (plaka=1.0)
+  calib_min_samples: 6          # ppm(y) regresyonu için min ölçüm (ısınma)
+  speed_window_frames: 8        # hız pencere-medyan regresyon penceresi (kare) — uzun = düz
+  speed_max_accel_mps2: 8.0     # fiziksel-olmayan ivme aykırı reddi eşiği
+  speed_kalman_q: 2.0           # Kalman süreç gürültüsü (küçük = daha düz)
+  speed_kalman_r: 12.0          # Kalman ölçüm gürültüsü (büyük = ölçüme az güven, daha düz)
+  speed_ema_alpha: 0.25         # Kalman üstü EMA yumuşatma (küçük = daha düz; 0 = kapalı)
+  speed_metric_max_kmh: 200.0   # akıl sağlığı üst sınırı
+  frame_margin_px: 50           # ölü bölge: kadraj kenarı şeridi (px) — bu şeritte hız dondurulur
+  max_age: 30                   # track bu kadar kare görünmezse hız/kalibrasyon durumu düşer (bellek)
+  # --- swerving (dikkatsiz sürüş / yalpalama) — yanal yörünge analizi --------
+  # Pencere SANİYE cinsinden (fps-bağımsız), genlik ARAÇ GENİŞLİĞİ biriminde
+  # (ölçek-bağımsız, K-004). Algoritma: ZigZag ekstremum sayacı — cx serisi mevcut
+  # uç noktadan amp kadar geri dönünce yön-değişimi sayılır; monoton hareket
+  # (yaklaşma kayması, tek şerit değişimi) yapısal olarak 0 üretir. Bayrak 16/8
+  # süzgecinden geçer; 'swerving_vehicle' kuralı RISK_ALERT üretir; QoD tetiklenir.
+  swerving:
+    enabled: true
+    window_s: 3.0               # yanal yörünge penceresi (saniye)
+    min_flips: 2                # min yön-değişimi (sol→sağ→sol); şerit değişimi 0-1 üretir
+    amp_ratio: 0.06             # anlamlı dönüş genliği = bu × O ANKİ araç genişliği
+
+# Trafik tabelası (sahne-seviyesi) — hız-limiti tespiti + araç hızıyla çapraz kontrol.
+# Detector bu sınıfları araç/kişi DIŞI olarak ayrı toplar (last_signs); SignTracker
+# aktif limiti çıkarır, accumulator 'speed.over_limit' kuralıyla ihlali ateşler.
+sign:
+  enabled: true
+  # Detector'ın tabela kabul ettiği sınıf adları (value_map anahtarları da otomatik dahildir).
+  classes: [sign, speed_limit_30, speed_limit_50, speed_limit_70, speed_limit_90, speed_limit_120]
+  # Tabela sınıfı → hız limiti (km/h). Generic 'sign' haritada yoktur → yalnızca çizilir.
+  value_map:
+    speed_limit_30: 30
+    speed_limit_50: 50
+    speed_limit_70: 70
+    speed_limit_90: 90
+    speed_limit_120: 120
+  persistence_frames: 150       # son görülen limit bu kadar kare daha geçerli kalır (araç tabelayı geçer)
+  min_conf: 0.40                # bu güvenin altındaki tabela tespiti yok sayılır
+  mock_synthetic: false         # mock modda (ağırlıksız demo) sabit bir hız-limiti tabelası üret
+  mock_speed_limit: 50          # mock_synthetic açıkken üretilen limit (km/h)
+
+qod:
+  backend: mock                 # mock | camara
+  endpoint: http://localhost:8081
+  profiles:
+    optimize: LOW_LATENCY
+    quality: HIGH_THROUGHPUT
+  histeresis:
+    min_active_seconds: 3
+    cooldown_seconds: 5
+  # Yaklaşma tetiği — şartnamenin birincil QoD senaryosu ("TOGG aracının
+  # yaklaştığını algıladığında"): bbox alanı pencere içinde `growth` katına
+  # çıktıysa ve araç kadrajın min_area_ratio'sundan büyükse optimize tetiklenir.
+  approach:
+    enabled: true
+    window: 20                  # alan-büyüme penceresi (kare)
+    growth: 1.35                # alan(son)/alan(ilk) >= bu → yaklaşıyor
+    min_area_ratio: 0.02        # araç alanı / kare alanı alt sınırı (uzak araç tetiklemez)
+
+events:
+  transport: websocket
+  bind: "0.0.0.0:8080"
+
+number_verification:
+  backend: mock
+  endpoint: http://localhost:8082
+
+# ID-merkezli accumulator risk kuralları (genişletilebilir)
+risk:
+  rules:
+    - name: distracted_speeding
+      # telefonda + uygulanabilir limiti aşıyor. speed.speeding = tabela varsa onu,
+      # yoksa high_speed tabanını kullanır (30 bölgesinde 35 de dikkatsiz sürüş sayılır).
+      all_of: [driver.phone, speed.speeding]
+      severity: high
+    - name: prolonged_fatigue
+      all_of: [driver.fatigue, track.long_lived]
+      severity: high
+    - name: unbelted
+      all_of: [driver.no_seatbelt]
+      severity: medium
+    - name: speed_limit_violation
+      all_of: [speed.over_limit]   # araç hızı > aktif tabela limiti (SignTracker)
+      severity: high
+    - name: smoking_driver
+      # Sigara tek başına da risktir (şartname 4.4 birebir hedef sınıfı). Önceden
+      # yalnız DRIVER_STATE event'inde gömülüydü; artık RISK_ALERT üretir.
+      all_of: [driver.smoking]
+      severity: medium
+    - name: swerving_vehicle
+      # Dikkatsiz sürüş: yanal zigzag / ani şerit kayması (SpeedEstimator üretir).
+      all_of: [speed.swerving]
+      severity: high
+  high_speed_kmh: 90            # mutlak yüksek-hız tabanı: tabela YOKKEN speed.speeding/QoD bu eşiğe düşer
+  long_lived_frames: 90        # track.long_lived eşiği (kare sayısı)
+
+optional_modules:
+  zero_waste_payload: false
+  super_resolution: false
+  homography_ipm: false
+
+dashboard:
+  serve: true
+  default_bbox: true
+  theme: dark                   # dark | light
+
+# Servis portları (mock'lar gerçek sözleşmeyi taklit eder; final'de yalnızca endpoint değişir)
+services:
+  inference_api: 8080
+  qod_mock: 8081
+  nv_mock: 8082
