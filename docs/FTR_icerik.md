@@ -102,7 +102,7 @@ Ana ilke: tam kare yalnız Stage-1'e girer, sonrası ROI kırpıklarında çalı
 
 **Araç özellikleri:** Tip YOLO26-cls (7 D-2 sınıfı: sedan, suv, hatchback, pickup, minibus, panelvan, kamyon; model yoksa stok heuristik). Renk HSV baskın-renk (S<45 → akromatik, kromatikte 12-kovalı hue histogramı → 9 D-2 rengi; ayırt edilemezse atlanır, uydurma yok).
 
-**Ön-/son-işleme:** Kare seviyesi fps-bağımsız (`Preprocessor` pass-through, asıl iyileştirme Stage-2 ROI'sinde); plaka ROI'sinde ek olarak opsiyonel süper-çözünürlük + çok-kareli median füzyon. Çıktı şema doğrulayıcıdan geçer (tek doğruluk kaynağı, ASCII-safe). Held-out §4.1, dağıtım §4.3; araç-tip top-1 **ölçülüyor**.
+**Ön-/son-işleme:** Kare seviyesi fps-bağımsız (`Preprocessor` pass-through, asıl iyileştirme Stage-2 ROI'sinde); plaka ROI'sinde ek olarak opsiyonel süper-çözünürlük + çok-kareli median füzyon. Çıktı şema doğrulayıcıdan geçer (tek doğruluk kaynağı, ASCII-safe). Held-out §4.1, dağıtım §4.3; araç-tip top-1 **0,933** (822 görsel held-out).
 
 ---
 
@@ -118,9 +118,9 @@ Sınama üç katmanda yürütüldü: (1) her modelin **held-out** nicel başarı
 | custom_seatbelt (YOLO26s) | Emniyet kemeri | Roboflow/HF | 3.104 | 0.895 | 0.546 | 0.844 | 0.795 | 0.818 |
 | custom_smoking (YOLO26s) | Sigara | CigDet/Mendeley | ~557 | 0.856 | 0.457 | 0.855 | 0.820 | 0.837 |
 | yolo26l (stok) | Araç + kişi | COCO val2017 | 5.000 | 0.709 | 0.537 | 0.740 | 0.641 | — |
-| Araç-tip (YOLO26-cls) | 7 D-2 tipi | QoDe-5G | 6.480 | ölçülüyor | ölçülüyor | ölçülüyor | ölçülüyor | ölçülüyor |
+| Araç-tip (YOLO26-cls)† | 7 D-2 tipi | QoDe-5G | 6.480 | top1 **0,933** | top5 0,999 | — | — | — |
 
-Plaka modeli (mAP@50 0.983 / F1 0.973) hattın en kritik halkasıdır; sigara modelinin düşük mAP@50-95'i (0.457) küçük-nesne zorluğunu yansıtır, bu yüzden pose-geometrisiyle OR-füzyonda kullanılır. Araç-tip top-1 **ölçülüyor** — uydurma değer girilmemiştir.
+Plaka modeli (mAP@50 0.983 / F1 0.973) hattın en kritik halkasıdır; sigara modelinin düşük mAP@50-95'i (0.457) küçük-nesne zorluğunu yansıtır, bu yüzden pose-geometrisiyle OR-füzyonda kullanılır. †Araç-tip bir **sınıflandırma** modelidir; metriği mAP değil **top-1 0,933 / top-5 0,999** (822 görsel held-out, 7 D-2 tipi). Entegrasyonda 3 gerçek test aracını tutarlı biçimde **suv** olarak sınıfladı (GT yalnız "car" içerir; ince-tip GT yok). Uydurma değer girilmemiştir.
 
 **Şekil 2: mAP@50 karşılaştırma grafiği.** Dört modelin mAP@50 değerleri (custom_license_plate 0.983 / seatbelt 0.895 / smoking 0.856 / yolo26l-COCO 0.709) yatay bar grafiğinde gösterilir; özel modellerin alan-özgü performansı stok COCO başarımını aşar.
 
