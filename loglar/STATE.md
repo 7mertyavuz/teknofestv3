@@ -7,8 +7,9 @@ _Son güncelleme: gece-modu iterasyon 0 (başlangıç ölçümü), 2026-06-28_
 |---|---|
 | Şema validatörü (anahtar/etiket/ASCII/plaka/conf) | ✅ pytest 10/10 |
 | 3-video → geçerli results.json | ✅ (v1/v2/v3 VALIDATION OK) |
-|  Docker imajı (T4/cu121) build ✅ 3.63GB, build+run+offline DOĞRULANDI | ⏳ win-WSL'de build koşuyor (torch cu121 iniyor) |
-| İmaj ≤8GB / çalışma ≤10dk / runtime-internetsiz | ⏳ build sonrası ölçülecek |
+| Docker imajı (T4/cu121) build + run | ✅ **3.63GB**, uçtan uca doğrulandı (klipte geçerli results.json) |
+| İmaj ≤8GB / runtime-internetsiz | ✅ 3.63GB ≤8GB; offline model-bake çalışıyor ("Skipping download... already exists") |
+| Çalışma ≤10dk | ⏳ T4'te ölçülemiyor (bizde T4 yok); CPU klip 75 kare/82s — T4 GPU'da bütçe içi beklenir |
 | §5.4 ortam-tespiti yok | ✅ sabit yol, tek davranış |
 | Bozuk/eksik video çökme yok | ✅ kare-başına + global try/except + fallback |
 

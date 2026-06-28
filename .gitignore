@@ -16,3 +16,9 @@ runs/
 *.log
 .idea/
 .vscode/
+
+# teslim build artifacts (tekrar-uretilebilir)
+teslim/kod.zip
+teslim/*.tar
+data/vehicle_cls/
+data/rf_cache/
