@@ -18,8 +18,8 @@ _Döngü tarafından sürekli güncellenir._
 ## Güncel metrikler
 - Held-out (model.val): license_plate mAP50 **0.983**, seatbelt 0.895, smoking 0.856; COCO yolo26l 0.709.
 - 3-video: plaka 3/3 (CER 0.0), araç-sınıfı %100, davranış doğru-senaryo, şema %100.
-- araç-tip top1: ⏳ eğitim 24/40 (bitince eklenecek).
-- Docker: 3.63GB, T4/cu121, offline. FPS: T4 ölçümü yok (T4 elde yok) → 5070'te gerçek-ölçüm + projeksiyon planlı.
+- **araç-tip top1: 0.933** (YOLO26s-cls, 7 D-2 tipi, 822 görsel held-out) — ENTEGRE: tip artık modelden (3 test aracı→suv), regresyon yok (plaka 3/3 + davranış korundu).
+- Docker: 3.63GB, T4/cu121, offline. FPS: 5070 full-pipeline ölçümü koşuyor (FTR'ye gerçek sayı); T4 projeksiyon ~27 (T4 elde yok).
 
 ## ⚠️ Senin kararın gerekenler
 1. **Roboflow API key** (varsa) → çok daha zengin veri = daha iyi modeller. Yoksa açık setlerle devam (şu an öyle).

@@ -40,3 +40,9 @@ Format: her iterasyon → [saat] SEÇİM (Pn) · NE · SONUÇ · KARAR (commit/r
 - **P2 araç-tip**: git-clone veri (6483) → 5070'te YOLO26s-cls (train 5222/val 822/7 sınıf) — epoch 24/40 aktif.
 - **P2 yolcu**: kişi-merkezli rol (birincil-kişi=sürücü) → on_koltuk FP video_2/3 temizlendi, video_1'de 1 kaldı (≥8-kare ikincil kişi, 0.5 dürüst). pytest 22/22.
 - **KARAR**: hepsi commit+push. Eğitim bitince: vehicle_type.pt entegre + re-baseline + 5070 FPS-bench + FTR top1 güncelle.
+
+## Iter 6 — Araç-tip eğitim TAMAM + ENTEGRE (P2 doğruluk kazancı)
+- **EĞİTİM**: YOLO26s-cls, results.csv: epoch31 **top1 0.933** / top5 0.999 (epoch28'den plato). CPU/DataLoader-bound (~2 it/s; GPU %0-1 — ders: cache=True/küçük girdi). Plato görülünce epoch35'te durdurup best.pt kullandım (boşa beklemedim).
+- **ENTEGRE**: best.pt→weights/vehicle_type.pt (scp). 3-video re-baseline: **tip artık modelden → 3 araç da "suv"** (TOGG T10X SUV; heuristik "sedan"dan muhtemelen daha doğru). **REGRESYON YOK**: plaka 34TC8532 3/3, davranışlar (sigara/telefon/slalom) korundu, şema geçerli, cs 0.87-0.92'ye yükseldi.
+- **FTR**: top1 0.933 işlendi (Tablo1 + §3.3 + özet; "ölçülüyor" kaldırıldı; classification notu eklendi). PDF 10sf. kod.zip yenilendi (193MB). pytest 22/22. **KARAR**: commit dc02688 + push.
+- **NOT (5070 kullanımı)**: araç-tip body-tip uzaktan görünür → transfer iyi. Sürücü-davranış (su_icme/esneme) setleri in-cabin yakın-çekim; bizim girdi uzak roadside 4K → domain-gap, riskli transfer (I4) → domain-uyumlu komite/Roboflow verisi gerekli (sabah notu). 5070: araç-tip + FPS-bench ile kullanıldı.
