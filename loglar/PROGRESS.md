@@ -33,3 +33,10 @@ Format: her iterasyon → [saat] SEÇİM (Pn) · NE · SONUÇ · KARAR (commit/r
 - **P1 DOĞRULAMA**: imaj bir klipte (CPU, WSL) çalıştırıldı → **geçerli results.json üretti** (tip=sedan, renk, slalom@2.5s; downscale klip → plaka 'tespit edilemedi' = doğru). **fast-plate-ocr modeli baked-cache'den yüklendi ("Skipping download... already exists") → OFFLINE BAKING + runtime-internetsiz ÇALIŞIYOR.** P1 (build+run+offline+şema+≤8GB) **TAM YEŞİL**.
 - **P2 veri (KIRMIZI/MAVİ)**: `snapshot_download` 6480 dosya token'sız rate-limit'te takıldı (cache boş, 25dk) → python kill. **PIVOT**: HF dataset'i **git clone** ile çekiliyor (tek bağlantı, per-file throttle yok). vehicle_type_cls.py'ye `--local_src` eklendi (yerel klonu kullan).
 - **KARAR**: commit+push; git clone arka planda; bitince --local_src ile eğitim re-run.
+
+## Iter 5 — PARALEL BATCH (FTR + teslim paketi + figürler + araç-tip eğitim)
+- **P6 FTR**: paralel-ajan workflow (5 bölüm + editör) → 27K markdown; condense-ajan → 16K (sayılar+6 tablo korundu); reportlab+gerçek-Arial render → **FTR_GONDERILECEK.pdf 10 sayfa (≤10 ✓)**. Figürler: Şekil1 mimari + Şekil2 mAP (matplotlib).
+- **P7 teslim**: kod.zip (160MB, 98 dosya, tekrar-üretilebilir build script) + TESLIM_NOTU.md (Drive + D-2 §9 **7/7 DOĞRULANDI**).
+- **P2 araç-tip**: git-clone veri (6483) → 5070'te YOLO26s-cls (train 5222/val 822/7 sınıf) — epoch 24/40 aktif.
+- **P2 yolcu**: kişi-merkezli rol (birincil-kişi=sürücü) → on_koltuk FP video_2/3 temizlendi, video_1'de 1 kaldı (≥8-kare ikincil kişi, 0.5 dürüst). pytest 22/22.
+- **KARAR**: hepsi commit+push. Eğitim bitince: vehicle_type.pt entegre + re-baseline + 5070 FPS-bench + FTR top1 güncelle.
