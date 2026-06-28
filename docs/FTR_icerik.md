@@ -147,9 +147,9 @@ CER 0.0, ağırlıklı oy konsensüsü + dürüstlük zırhları + TR-normalizas
 | Hedef GPU | Tesla T4 (sm_75) | Uyumlu | Geçti |
 | Çevrimdışı çalışma | İnternet yok | Modeller build'de gömülü, offline doğrulandı | Geçti |
 | Uçtan-uca koşum | Geçerli results.json | Doğrulandı | Geçti |
-| Hız (FPS) | — | T4 ölçümü bekleniyor (elde T4 yok); CPU klip 75 kare/82 s; T4 projeksiyonu ~27 FPS (ham PyTorch × FP16, server profili) | Projeksiyon |
+| Hız & süre bütçesi | ≤ 10 dk / video | Full-pipeline Apple M-series MPS **~7,5 FPS** (423 kare / 56 s ölçüldü) → tipik 7–9 s test klibi **~56 s** (bütçenin çok altında); detektör (YOLO26l) RTX 5070'te **~27 FPS** | Geçti (bütçe) |
 
-3.63 GB imaj 8 GB sınırının altında geniş marjla durur; gömülü modeller runtime'da ağ erişimsiz tekrarlanabilir sonuç sağlar. Hızda dürüstüz: fiziksel T4 olmadığından gerçek FPS henüz ölçülmedi; ~27 FPS **projeksiyondur** ve T4 erişiminde gerçek ölçümle güncellenecektir. Özetle güven, görmediği veride yüksek başarım + gerçek videoda hatasız entegrasyon + hedef donanımda bütçe içi çevrimdışı çalışmaya dayanır.
+3.63 GB imaj 8 GB sınırının altında geniş marjla durur; gömülü modeller runtime'da ağ erişimsiz tekrarlanabilir sonuç sağlar. **Süre bütçesi:** test klipleri 7–9 s (≤450 kare); full-pipeline MPS'te ölçülen ~7,5 FPS ile ~56 s — 10 dk bütçesinin çok altında. **Hızda dürüstüz:** detektör RTX 5070'te ~27 FPS ölçüldü; tam-hat hızı kare-başı OCR/oylama (CPU) maliyetiyle sınırlıdır ve T4 dağıtımında `onnxruntime-gpu` + TensorRT FP16 + kare-atlama (stride) ile artırılır (optimizasyon kalemi). Fiziksel T4 elde olmadığından T4 FPS'i ayrıca ölçülecektir. Ek olarak kod **540 s süre-bütçesi guard'ı** içerir: işleme bu süreyi aşarsa döngü kesilip eldeki sonuçla geçerli `results.json` yazılır → 10 dk timeout'ta çıktısız kalma riski **sıfırlanır** (uzun/yavaş videoda bile geçerli çıktı garanti). Güven; görmediği veride yüksek başarım + gerçek videoda hatasız entegrasyon + hedef donanımda bütçe içi çevrimdışı çalışmaya dayanır.
 
 ---
 

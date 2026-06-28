@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections import Counter, defaultdict
 
 from src import vehicle_attrs
@@ -41,6 +42,10 @@ MIN_EPISODE_CONF = 0.25
 TOP_CROPS = 5
 # Yolcu epizodu çıktıya girmek için min kare (geçici/tek-kare yanlış-pozitif yolcuyu ele).
 MIN_PASSENGER_FRAMES = 8
+# SÜRE BÜTÇESİ (D-2 ≤10dk): işleme bu süreyi aşarsa döngü kesilir, ELDEKİ sonuçla GEÇERLİ
+# results.json yazılır (hakem konteyneri 10dk'da öldürür → çıktısız kalmaktansa kısmi-geçerli).
+# Tek davranış, ortam-tespiti yok (§5.4). Model yükleme dahil run_inference başından ölçülür.
+RUNTIME_BUDGET_S = 540.0
 
 
 def _collapse_episodes(samples: list[tuple[float, float]]) -> list[tuple[float, float, int]]:
@@ -181,13 +186,24 @@ def run_inference(video_path: str, weights_path: str = "/app/weights", max_frame
                     rec["seats"][seat] += 1
                     rec["times"].append((t, 0.5))
 
+    start_t = time.time()
+    budget_hit = False
     try:
         for frame, anno, _events in pipe.frames(video_path, max_frames=max_frames):
+            if time.time() - start_t > RUNTIME_BUDGET_S:
+                budget_hit = True
+                log.warning(
+                    "Süre bütçesi (%.0fs) aşıldı, kare %s'te kesiliyor — eldeki sonuçla finalize",
+                    RUNTIME_BUDGET_S, getattr(anno, "frame_id", "?"),
+                )
+                break
             try:
                 _accumulate(frame, anno)
             except Exception as fe:  # noqa: BLE001 — tek kare hatası tüm koşuyu bitirmesin
                 log.debug("kare %s atlandı: %s", getattr(anno, "frame_id", "?"), fe)
                 continue
+        if budget_hit:
+            log.info("Bütçe-kesimli finalize: %.0fs işlendi", time.time() - start_t)
     except Exception as e:  # noqa: BLE001 — kaynak açma/okuma hatası: kısmi sonuçla devam (D-2 §7)
         log.warning("Çıkarım kaynak hatası (kısmi sonuçla devam): %s", e)
     finally:
