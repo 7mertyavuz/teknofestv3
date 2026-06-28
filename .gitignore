@@ -22,3 +22,6 @@ teslim/kod.zip
 teslim/*.tar
 data/vehicle_cls/
 data/rf_cache/
+
+data/_sf_extract/
+data/driver_cls/
