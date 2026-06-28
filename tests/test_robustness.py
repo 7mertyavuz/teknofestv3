@@ -58,17 +58,17 @@ def test_collapse_episodes_empty():
 
 
 def test_collapse_episodes_single_group_peak():
-    # tümü 1.2s boşluk içinde → tek epizot, tepe güven
+    # tümü 1.2s boşluk içinde → tek epizot, (tepe_t, tepe_conf, kare_sayısı)
     out = _collapse_episodes([(1.0, 0.5), (1.5, 0.9), (2.0, 0.6)])
     assert len(out) == 1
-    assert out[0] == (1.5, 0.9)
+    assert out[0] == (1.5, 0.9, 3)
 
 
 def test_collapse_episodes_two_groups():
-    # 5s boşluk → iki ayrı epizot
+    # 5s boşluk → iki ayrı epizot (her biri 2 kare)
     out = _collapse_episodes([(1.0, 0.6), (1.4, 0.5), (8.0, 0.8), (8.3, 0.7)])
     assert len(out) == 2
-    assert out[0][0] == 1.0 and out[1] == (8.0, 0.8)
+    assert out[0][0] == 1.0 and out[1] == (8.0, 0.8, 2)
 
 
 # --- koltuk geometrisi --- #

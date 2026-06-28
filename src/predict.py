@@ -39,10 +39,12 @@ EPISODE_GAP_S = 1.2
 MIN_EPISODE_CONF = 0.25
 # Araç tip/renk örneklemesi için saklanan en büyük-alan kırpık sayısı (oylama robustluğu).
 TOP_CROPS = 5
+# Yolcu epizodu çıktıya girmek için min kare (geçici/tek-kare yanlış-pozitif yolcuyu ele).
+MIN_PASSENGER_FRAMES = 8
 
 
-def _collapse_episodes(samples: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """[(t, conf), ...] → epizot başına (temsilci_t, tepe_conf). t'ye göre sıralı işler."""
+def _collapse_episodes(samples: list[tuple[float, float]]) -> list[tuple[float, float, int]]:
+    """[(t, conf), ...] → epizot başına (temsilci_t, tepe_conf, kare_sayısı). t-sıralı."""
     if not samples:
         return []
     samples = sorted(samples, key=lambda x: x[0])
@@ -55,7 +57,7 @@ def _collapse_episodes(samples: list[tuple[float, float]]) -> list[tuple[float, 
     out = []
     for ep in episodes:
         peak_t, peak_c = max(ep, key=lambda x: x[1])
-        out.append((peak_t, peak_c))
+        out.append((peak_t, peak_c, len(ep)))
     return out
 
 
@@ -225,7 +227,7 @@ def _build_results(video_id, veh, behavior_spans, object_spans, passenger_spans,
     for (tid, kat, etiket), samples in behavior_spans.items():
         if main_tid is not None and tid != main_tid:
             continue
-        for peak_t, peak_c in _collapse_episodes(samples):
+        for peak_t, peak_c, _n in _collapse_episodes(samples):
             if peak_c >= MIN_EPISODE_CONF:
                 tespitler.append(
                     {"zaman_saniye": peak_t, "kategori": kat, "etiket": etiket,
@@ -233,7 +235,7 @@ def _build_results(video_id, veh, behavior_spans, object_spans, passenger_spans,
                 )
 
     for d2lab, samples in object_spans.items():
-        for peak_t, peak_c in _collapse_episodes(samples):
+        for peak_t, peak_c, _n in _collapse_episodes(samples):
             if peak_c >= MIN_EPISODE_CONF:
                 tespitler.append(
                     {"zaman_saniye": peak_t, "kategori": "nesneler", "etiket": d2lab,
@@ -243,11 +245,13 @@ def _build_results(video_id, veh, behavior_spans, object_spans, passenger_spans,
     for (vid, seat), samples in passenger_spans.items():
         if main_tid is not None and vid != main_tid:
             continue
-        for peak_t, peak_c in _collapse_episodes(samples):
-            tespitler.append(
-                {"zaman_saniye": peak_t, "kategori": "yolcular", "etiket": seat,
-                 "confidence_score": clamp_conf(peak_c)}
-            )
+        for peak_t, peak_c, n in _collapse_episodes(samples):
+            # Yolcu: yalnız KALICI epizot (>= MIN_PASSENGER_FRAMES kare) → geçici FP elenir
+            if n >= MIN_PASSENGER_FRAMES:
+                tespitler.append(
+                    {"zaman_saniye": peak_t, "kategori": "yolcular", "etiket": seat,
+                     "confidence_score": clamp_conf(peak_c)}
+                )
 
     tespitler.sort(key=lambda d: (d["zaman_saniye"], d["kategori"], d["etiket"]))
     return {"video_id": video_id, "arac_bilgisi": arac, "tespitler": tespitler}

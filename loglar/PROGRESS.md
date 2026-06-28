@@ -21,3 +21,10 @@ Format: her iterasyon → [saat] SEÇİM (Pn) · NE · SONUÇ · KARAR (commit/r
 - **NE (P2)**: veri darboğazı → Roboflow yok; agy takıldı (boş). **Açık set bulundu**: HF `QoDe-5G/raw-car-classification-iHasibi` (6480 görsel, SEDAN/SUV/Hatchback/Pickup/Truck/Bus/MPV → D-2 7-tip eşlemesi, no-key). YOLO26-cls araç-tip eğitimi 5070'te başlatıldı (oversample-denge + augment).
 - **KARAR**: commit 009fda9 + push. İki rebuild/train arka planda; sonuç beklenecek.
 - **DURUM**: ⏳ Docker rebuild (boyut ölçülecek) + ⏳ araç-tip eğitim (held-out top1 ölçülecek).
+
+## Iter 3 — P1 Docker "ihlali" YANILGI çıktı + yolcu hassasiyeti (KIRMIZI/MAVİ)
+- **KIRMIZI**: "imaj 10.7GB" diye slimledim; slim build warmup'ta PATLADI — `strip --strip-unneeded` OpenBLAS .so'yu bozdu (ELF page-align → numpy import fail).
+- **MAVİ/ÖLÇÜM**: Konteynerde ölçtüm → **gerçek imaj boyutu `docker image inspect .Size` = 3.63GB** (10.7GB containerd "disk usage"=build-cache, imaj DEĞİL). **İmaj ZATEN ≤8GB UYUMLU.** Ayrıca: strip-debug sıfır kazandırıyor (libs zaten stripli); nccl+cupti torch import'ta ZORUNLU (kaldırılamaz).
+- **KARAR (I5)**: slim değişikliği gereksiz + kırıyordu → **Dockerfile orijinale REVERT**. Mevcut 3.63GB imaj geçerli, kullanılıyor.
+- **EK (P2 hassasiyet)**: baseline'daki `on_koltuk` yanlış-pozitifleri için yolcu epizotuna **min-kare kapısı (≥8)** eklendi (geçici tek-kare yolcu elenir). pytest 22/22 yeşil.
+- **METRİK**: Docker uyumluluk ✅ (3.63GB, build+warmup OK). Sıradaki: imajı bir videoyla çalıştırıp results.json doğrula (P1 kapanış).
