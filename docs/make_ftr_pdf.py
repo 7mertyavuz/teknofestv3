@@ -21,8 +21,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table,
-                                TableStyle)
+from reportlab.platypus import (CondPageBreak, Image, KeepTogether, PageBreak, Paragraph,
+                                SimpleDocTemplate, Spacer, Table, TableStyle)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -45,18 +45,43 @@ for base, bold, paths in [
         except Exception:
             pass
 
+# Arial Black (şablon: başlık yazı tipi Arial Black). Yoksa Arial-Bold'a düşer.
+BLACK = BOLD
+for _p in ["/Library/Fonts/Arial Black.ttf", "/System/Library/Fonts/Supplemental/Arial Black.ttf"]:
+    if os.path.exists(_p):
+        try:
+            pdfmetrics.registerFont(TTFont("Arial-Black", _p))
+            BLACK = "Arial-Black"
+            break
+        except Exception:
+            pass
+
+# Türkçe-destekli monospace (kod span'leri için; built-in Courier'de ş/ğ yok → ■).
+MONO = "Courier"
+for _p in ["/System/Library/Fonts/Supplemental/Courier New.ttf", "/Library/Fonts/Courier New.ttf"]:
+    if os.path.exists(_p):
+        try:
+            pdfmetrics.registerFont(TTFont("CourierTR", _p))
+            MONO = "CourierTR"
+            break
+        except Exception:
+            pass
+
 LEAD = 12 * 1.15  # 1.15 satır aralığı
 ST = {
     "body": ParagraphStyle("body", fontName=BODY, fontSize=12, leading=LEAD, alignment=TA_JUSTIFY,
                            spaceAfter=6),
-    "h2": ParagraphStyle("h2", fontName=BOLD, fontSize=14, leading=16, spaceBefore=12, spaceAfter=6,
+    "h2": ParagraphStyle("h2", fontName=BLACK, fontSize=14, leading=17, spaceBefore=12, spaceAfter=6,
                          textColor=colors.HexColor("#1a3c5e")),
-    "h3": ParagraphStyle("h3", fontName=BOLD, fontSize=12.5, leading=15, spaceBefore=8, spaceAfter=4,
+    "h3": ParagraphStyle("h3", fontName=BLACK, fontSize=12.5, leading=15, spaceBefore=8, spaceAfter=4,
                          textColor=colors.HexColor("#244")),
     "bullet": ParagraphStyle("bullet", fontName=BODY, fontSize=12, leading=LEAD, alignment=TA_LEFT,
                              leftIndent=14, spaceAfter=3, bulletIndent=4),
     "cap": ParagraphStyle("cap", fontName=BODY, fontSize=9.5, leading=11, alignment=TA_CENTER,
                           textColor=colors.HexColor("#555"), spaceAfter=8),
+    "td": ParagraphStyle("td", fontName=BODY, fontSize=9, leading=10.5, alignment=TA_LEFT),
+    "th": ParagraphStyle("th", fontName=BOLD, fontSize=9, leading=10.5, alignment=TA_LEFT,
+                         textColor=colors.HexColor("#16324a")),
     "cover_t": ParagraphStyle("ct", fontName=BOLD, fontSize=20, leading=26, alignment=TA_CENTER),
     "cover_s": ParagraphStyle("cs", fontName=BODY, fontSize=13, leading=20, alignment=TA_CENTER),
 }
@@ -65,27 +90,35 @@ ST = {
 def _inline(text: str) -> str:
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
-    text = re.sub(r"`(.+?)`", r"<font face='Courier'>\1</font>", text)
+    text = re.sub(r"`(.+?)`", rf"<font face='{MONO}'>\1</font>", text)
     return text
 
 
 def _md_table(block_lines):
-    rows = []
+    raw = []
     for ln in block_lines:
         if re.match(r"^\s*\|?\s*[-:|\s]+\|?\s*$", ln) and set(ln.replace("|", "").strip()) <= set("-: "):
             continue
-        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
-        rows.append([Paragraph(_inline(c), ST["body"]) for c in cells])
-    if not rows:
+        raw.append([c.strip() for c in ln.strip().strip("|").split("|")])
+    if not raw:
         return None
-    t = Table(rows, hAlign="LEFT")
+    ncol = max(len(r) for r in raw)
+    raw = [r + [""] * (ncol - len(r)) for r in raw]
+    # İçerik-oranlı sütun genişliği (sayısal sütun dar, metin sütunu geniş → token-ortası kırılma yok)
+    maxlen = [max(1, *(len(r[j]) for r in raw)) for j in range(ncol)]
+    avail = 16.3 * cm
+    raw_w = [max(1.1 * cm, avail * ml / sum(maxlen)) for ml in maxlen]
+    scale = avail / sum(raw_w)
+    colW = [w * scale for w in raw_w]
+    rows = [[Paragraph(_inline(c), ST["th"] if i == 0 else ST["td"]) for c in r]
+            for i, r in enumerate(raw)]
+    t = Table(rows, colWidths=colW, hAlign="LEFT")
     t.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#999")),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dce6f1")),
-        ("FONTNAME", (0, 0), (-1, 0), BOLD),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
     ]))
     return t
 
@@ -141,16 +174,22 @@ def build(md_path, out_path, takim, takim_id, basvuru_id):
         if ln.strip() in ("---", "***"):
             flush_para(); i += 1; continue
         if ln.startswith("## "):
-            flush_para(); story.append(Paragraph(_inline(ln[3:].strip()), ST["h2"]))
+            flush_para()
+            story.append(CondPageBreak(4.5 * cm))  # yetim başlık önleme
+            story.append(Paragraph(_inline(ln[3:].strip()), ST["h2"]))
             # şekil enjeksiyonu
             low = ln.lower()
             if "mimari" in low or "3.2" in low:
                 story += _fig("mimari.png", "Şekil 1: Sistem mimarisi — video → results.json")
             i += 1; continue
         if ln.startswith("### "):
-            flush_para(); story.append(Paragraph(_inline(ln[4:].strip()), ST["h3"])); i += 1; continue
+            flush_para()
+            story.append(CondPageBreak(3.5 * cm))  # yetim alt-başlık önleme
+            story.append(Paragraph(_inline(ln[4:].strip()), ST["h3"])); i += 1; continue
         if ln.startswith("# "):
-            flush_para(); story.append(Paragraph(_inline(ln[2:].strip()), ST["h2"])); i += 1; continue
+            flush_para()
+            story.append(CondPageBreak(4.5 * cm))
+            story.append(Paragraph(_inline(ln[2:].strip()), ST["h2"])); i += 1; continue
         if ln.strip().startswith("|") and "|" in ln.strip()[1:]:
             flush_para()
             blk = []

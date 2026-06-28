@@ -67,20 +67,7 @@ Problemi laboratuvardan ayıran, girdinin kontrolsüz saha koşullarında üreti
 
 ## 3.2 Çözüm Mimarisi
 
-Çalıştırma sözleşmesi sabittir: `docker run` giriş noktasını (`main.py`) başlatır, `/app/data/input/video.mp4 → /app/data/output/results.json` dönüşümünü yapar. Ortama göre davranış değiştiren yapı yok — tek davranış (D-2 §5.4).
-
-**Şekil 1: Sistem Mimarisi — Uçtan Uca Akış**
-
-```
-video (cv2, fps-bağımsız kare)
-  → [Stage-1] YOLO26l + ByteTrack (araç + kişi + tabela; alan-ağırlıklı sınıf oyu; dedup)
-      → DriverLock (konum-bazlı sürücü/yolcu)
-  → [Stage-2a] Sürücü durumu: YOLO26-pose geometri + custom_smoking (OR füzyon) → 16/8 oylama
-  → [Stage-2b] Plaka: custom_license_plate (YOLO26s) sıkı kırpma → fast-plate-ocr (ONNX) / EasyOCR
-      → TR-normalizasyon → ağırlıklı-oy konsensüs + dürüstlük zırhları
-  → [Araç özellikleri] tip: YOLO26-cls (7 sınıf) · renk: HSV baskın-renk
-  → ID-merkezli birikim → results.json (şema-doğrulayıcıdan geçer)
-```
+Çalıştırma sözleşmesi sabittir: `docker run` giriş noktasını (`main.py`) başlatır, `/app/data/input/video.mp4 → /app/data/output/results.json` dönüşümünü yapar. Ortama göre davranış değiştiren yapı yok — tek davranış (D-2 §5.4). Uçtan uca akış Şekil 1'de gösterilmiştir: ham video tek bir Stage-1 tespit/takip katmanından geçer, ardından sürücü-durumu, plaka ve araç-özellik dalları paralel çalışıp ID-merkezli birikimde birleşir.
 
 Stage-1/2a/2b ayrıntıları §3.3'te, held-out sayıları §4.1 Tablo 1'dedir. Sağlamlık: kare başına `try/except` izolasyonu (tek bozuk kare koşuyu bitirmez); DriverLock `confirm_frames=3` ile yolcuyu kilitler; **ID-merkezli birikim** kare/güven/alan/oy/plaka/davranış aralıklarını eşikli epizot ayrımıyla toplar (ardışık tespitler >1.2 s ayrıksa ayrı olay); **D-2 çıktısı** ana aracı seçip `arac_bilgisi` + zaman damgalı `tespitler`'i şema doğrulayıcıdan geçirir, çökmede `fallback_doc` boş-geçerli `results.json` üretir.
 
