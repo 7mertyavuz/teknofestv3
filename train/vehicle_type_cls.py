@@ -119,7 +119,7 @@ def main():
     name = "teknofestv3_vehicle_type"
     model.train(
         data=args.out, epochs=args.epochs, imgsz=args.imgsz, batch=args.batch,
-        device=args.device, project=str(ROOT / "runs"), name=name,
+        device=args.device, project=str(ROOT / "runs"), name=name, cache=True,  # RAM cache → GPU-bound (hızlı; CPU-DataLoader darboğazını giderir)
         hsv_h=0.015, hsv_s=0.6, hsv_v=0.4, degrees=8, translate=0.1, scale=0.5,
         fliplr=0.5, erasing=0.3, seed=0, deterministic=True, plots=True,
     )
