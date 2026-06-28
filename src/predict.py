@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from src import vehicle_attrs
 from src.d2_labels import (
@@ -108,7 +108,10 @@ def run_inference(video_path: str, weights_path: str = "/app/weights", max_frame
     )
     behavior_spans: dict[tuple, list[tuple[float, float]]] = defaultdict(list)  # (tid,kat,etiket)
     object_spans: dict[str, list[tuple[float, float]]] = defaultdict(list)  # d2_label
-    passenger_spans: dict[tuple[int, str], list[tuple[float, float]]] = defaultdict(list)
+    # Kişi-merkezli rol takibi (pid → rol sayıları + koltuk oyu + zaman). Rolü kare-kare
+    # salınan TEK sürücüyü yanlışlıkla yolcu saymamak için: yolcu = ÇOĞUNLUKLA passenger
+    # olan VE sürücü-baskın olmayan kişi.
+    person_roles: dict[int, dict] = {}
 
     def _accumulate(frame, anno) -> None:
         """Tek karenin katkısını birikimlere yazar (kare-başına izole edilir)."""
@@ -160,13 +163,23 @@ def run_inference(video_path: str, weights_path: str = "/app/weights", max_frame
                 object_spans[d2lab].append((t, clamp_conf(getattr(aux, "conf", 0.5))))
 
         for p in anno.persons:
-            if p.get("role") == "passenger":
-                vid = p.get("vehicle_id")
+            pid = p.get("track_id")
+            if pid is None:
+                continue
+            role = p.get("role")
+            vid = p.get("vehicle_id")
+            rec = person_roles.setdefault(
+                pid, {"driver": 0, "passenger": 0, "vid": vid,
+                      "seats": Counter(), "times": []}
+            )
+            rec[role] = rec.get(role, 0) + 1
+            rec["vid"] = vid
+            if role == "passenger":
                 vrec = pipe.acc.tracks.get(vid)
-                vbb = vrec.bbox if vrec is not None else None
-                seat = _seat_label(p, vbb)
+                seat = _seat_label(p, vrec.bbox if vrec is not None else None)
                 if seat:
-                    passenger_spans[(vid, seat)].append((t, 0.5))
+                    rec["seats"][seat] += 1
+                    rec["times"].append((t, 0.5))
 
     try:
         for frame, anno, _events in pipe.frames(video_path, max_frames=max_frames):
@@ -183,10 +196,10 @@ def run_inference(video_path: str, weights_path: str = "/app/weights", max_frame
         except Exception:  # noqa: BLE001
             pass
 
-    return _build_results(video_id, veh, behavior_spans, object_spans, passenger_spans, type_clf)
+    return _build_results(video_id, veh, behavior_spans, object_spans, person_roles, type_clf)
 
 
-def _build_results(video_id, veh, behavior_spans, object_spans, passenger_spans, type_clf) -> dict:
+def _build_results(video_id, veh, behavior_spans, object_spans, person_roles, type_clf) -> dict:
     """Birikimlerden D-2 results.json sözlüğünü kurar."""
     tespitler: list[dict] = []
 
@@ -242,12 +255,26 @@ def _build_results(video_id, veh, behavior_spans, object_spans, passenger_spans,
                      "confidence_score": clamp_conf(peak_c)}
                 )
 
-    for (vid, seat), samples in passenger_spans.items():
-        if main_tid is not None and vid != main_tid:
-            continue
-        for peak_t, peak_c, n in _collapse_episodes(samples):
-            # Yolcu: yalnız KALICI epizot (>= MIN_PASSENGER_FRAMES kare) → geçici FP elenir
-            if n >= MIN_PASSENGER_FRAMES:
+    # Yolcular: ana araçta EN ÇOK kare gören kişi = SÜRÜCÜ (yolcu değil; driver_lock tek
+    # kişiyi bazen passenger etiketler → o FP elenir). Yolcu YALNIZ ikincil, çoğunlukla
+    # passenger ve kalıcı (>=MIN_PASSENGER_FRAMES) kişilerden.
+    main_persons = {
+        pid: rec for pid, rec in person_roles.items()
+        if main_tid is None or rec.get("vid") == main_tid
+    }
+    driver_pid = (
+        max(main_persons, key=lambda k: main_persons[k]["driver"] + main_persons[k]["passenger"])
+        if main_persons else None
+    )
+    for pid, rec in main_persons.items():
+        if pid == driver_pid:
+            continue  # birincil/tek kişi = sürücü
+        pf, df = rec.get("passenger", 0), rec.get("driver", 0)
+        if pf >= MIN_PASSENGER_FRAMES and pf > df and rec.get("seats"):
+            seat = rec["seats"].most_common(1)[0][0]
+            episodes = _collapse_episodes(rec.get("times", []))
+            if episodes:
+                peak_t, peak_c, _n = max(episodes, key=lambda e: e[2])
                 tespitler.append(
                     {"zaman_saniye": peak_t, "kategori": "yolcular", "etiket": seat,
                      "confidence_score": clamp_conf(peak_c)}
