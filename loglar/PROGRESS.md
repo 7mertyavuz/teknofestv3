@@ -58,3 +58,9 @@ Format: her iterasyon → [saat] SEÇİM (Pn) · NE · SONUÇ · KARAR (commit/r
 - **VERİ ENGELİ (4 yöntem başarısız)**: snapshot_download (6480 dosya throttle/stuck), hf_hub_download (tek zip 0-byte stuck, 8× .incomplete), git-clone (zip HEAD'de yok), git-lfs pull (PULL_EXIT=0 ama LFS obj 0MB, zip materyalize olmadı). → **box'tan token'sız çekilemiyor; HF token veya Roboflow key gerekli (KULLANICI aksiyonu).** driver_action_cls.py hazır, key gelince anında koşar.
 - **5070 ALTERNATİF (boş bırakmamak)**: QoDe-5G verisi zaten box'ta → **yolo26m-cls** araç-tip (cache=True, GPU-bound/hızlı) eğitimi başlatıldı. top1>0.933 ise swap, değilse mevcut s-model (0.933) kalır (Mac kopyası dokunulmaz, güvenli).
 - **KARAR**: commit a295174. Sürücü-eylem YENİ model = veri-engeli (sabah: token/key ver).
+
+## Iter 9 — yolo26m araç-tip denendi → s-model KORUNDU (KIRMIZI/MAVİ)
+- **DENEY**: yolo26m-cls (cache=True, full 40 epoch) held-out top1 **0.9416 > s 0.933**. Script `name` çakışması (runs/...-2) → doğru best.pt `-2` dizininden çekildi (20.9MB stripped).
+- **DOMAIN DOĞRULAMA**: 3 test aracı (AYNI TOGG) → m-model **suv/sedan/suv (tutarsız)**, s-model **suv/suv/suv (tutarlı, 3/3 doğru — TOGG=SUV)**. m'nin yüksek top1'i Bangladesh-domain'de; bizim roadside domain'de s daha tutarlı/doğru.
+- **KARAR (I5)**: marjinal source-top1 kazancı domain-tutarsızlığına değmez → **s-model (0.933) KORUNDU**, m-swap REVERT (byte-aynı, submission bozulmadı). metrics.json'a deney notu. Ders: held-out (kaynak-domain) ≠ hedef-domain; tutarlılık sinyali kullanıldı.
+- **KONVERJANS**: araç-tip optimizasyonu keşfedildi+sonuçlandı. Yeni driver-action modeli veri-engelinde (kullanıcı HF-token/Roboflow-key). Yüksek-değer otonom iş bitti.

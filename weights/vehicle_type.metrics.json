@@ -13,5 +13,5 @@
   "source": "QoDe-5G/raw-car-classification-iHasibi (HF, 6480 görsel, 7 D-2 tipine eşlenmiş)",
   "balancing": "azınlık sınıf oversample (train-only)",
   "device": "RTX 5070 (cu128)",
-  "note": "Held-out top1 results.csv epoch 31 (en iyi val); best.pt deploy. Bangladesh-ağırlıklı genel araç seti; gövde-tipi transfer edilebilir."
+  "note": "yolo26s-cls. yolo26m (top1 0.9416) denendi ama 3 test aracinda tutarsiz (suv/sedan/suv) — s-model 3/3 suv tutarli, KORUNDU."
 }
